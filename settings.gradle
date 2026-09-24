@@ -1,0 +1,5 @@
+rootProject.name = 'seoulaim-backend'
+
+include 'api'
+include 'algorithm-core'
+include 'algorithm-bench'
