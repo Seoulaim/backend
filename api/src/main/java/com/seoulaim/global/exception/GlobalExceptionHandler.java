@@ -7,8 +7,10 @@ import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -41,6 +43,34 @@ public class GlobalExceptionHandler {
         .body(
             new ErrorResponse(
                 errorCode.getCode(), errorCode.getMessage(), fields, MDC.get("traceId")));
+  }
+
+  @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+  public ResponseEntity<ErrorResponse> handleTypeMismatchException(
+      MethodArgumentTypeMismatchException exception) {
+    ErrorCode errorCode = ErrorCode.COMMON_INVALID_REQUEST;
+
+    return ResponseEntity.status(errorCode.getStatus())
+        .body(
+            new ErrorResponse(
+                errorCode.getCode(),
+                errorCode.getMessage(),
+                Map.of(exception.getName(), "잘못된 값입니다: " + exception.getValue()),
+                MDC.get("traceId")));
+  }
+
+  @ExceptionHandler(MissingServletRequestParameterException.class)
+  public ResponseEntity<ErrorResponse> handleMissingParameterException(
+      MissingServletRequestParameterException exception) {
+    ErrorCode errorCode = ErrorCode.COMMON_INVALID_REQUEST;
+
+    return ResponseEntity.status(errorCode.getStatus())
+        .body(
+            new ErrorResponse(
+                errorCode.getCode(),
+                errorCode.getMessage(),
+                Map.of(exception.getParameterName(), "필수 파라미터입니다"),
+                MDC.get("traceId")));
   }
 
   @ExceptionHandler(Exception.class)

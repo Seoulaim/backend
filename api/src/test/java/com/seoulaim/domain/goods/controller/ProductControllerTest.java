@@ -82,4 +82,28 @@ class ProductControllerTest {
 
     verify(productService, never()).getProducts(any());
   }
+
+  @Test
+  @DisplayName("상품 목록 조회에 지원하지 않는 sort 값을 넘기면 400 과 COMMON_INVALID_REQUEST 를 반환한다")
+  void getProducts_잘못된sort_400반환() throws Exception {
+    mockMvc
+        .perform(get("/api/v1/products").param("sort", "FOO"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("COMMON_INVALID_REQUEST"))
+        .andExpect(jsonPath("$.fields.sort").value("잘못된 값입니다: FOO"));
+
+    verify(productService, never()).getProducts(any());
+  }
+
+  @Test
+  @DisplayName("상품 상세 조회의 productId 가 UUID 형식이 아니면 400 을 반환한다")
+  void getProduct_UUID형식아닌ID_400반환() throws Exception {
+    mockMvc
+        .perform(get("/api/v1/products/{productId}", "not-a-uuid"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("COMMON_INVALID_REQUEST"))
+        .andExpect(jsonPath("$.fields.productId").exists());
+
+    verify(productService, never()).getById(any());
+  }
 }
