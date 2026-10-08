@@ -29,6 +29,13 @@ public enum ErrorCode {
   GOODS_NOT_FOUND(HttpStatus.NOT_FOUND, "GOODS_NOT_FOUND", "상품을 찾을 수 없습니다"),
   GOODS_CATEGORY_NOT_FOUND(HttpStatus.NOT_FOUND, "GOODS_CATEGORY_NOT_FOUND", "상품 카테고리를 찾을 수 없습니다"),
   GOODS_INVALID_CURSOR(HttpStatus.BAD_REQUEST, "GOODS_INVALID_CURSOR", "잘못된 커서 값입니다"),
+
+  // FILE
+  FILE_NOT_FOUND(HttpStatus.NOT_FOUND, "FILE_NOT_FOUND", "파일을 찾을 수 없습니다"),
+  FILE_INVALID_CONTENT_TYPE(
+      HttpStatus.BAD_REQUEST, "FILE_INVALID_CONTENT_TYPE", "허용되지 않는 파일 형식입니다"),
+  FILE_TOO_LARGE(HttpStatus.BAD_REQUEST, "FILE_TOO_LARGE", "파일 크기가 허용 범위를 초과했습니다"),
+  FILE_INVALID_DOMAIN(HttpStatus.BAD_REQUEST, "FILE_INVALID_DOMAIN", "잘못된 파일 도메인입니다"),
   ;
 
   private final HttpStatus status;
