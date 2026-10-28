@@ -6,38 +6,31 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * 앱 사용자 - 아이디/비밀번호 가입, 소셜 가입 모두 수용 - 소셜 계정 정보는 별도 테이블 → login_id, password_hash 는 nullable -
- * refresh token 은 Redis 에 저장
+ * 앱 사용자 - 이메일 가입: email 이 로그인 아이디, 가입 전 이메일 OTP 인증 필수 - 소셜 계정 정보는 별도 테이블 → email, password_hash 는
+ * nullable - 이메일 중복 방지는 lower(email) partial unique 인덱스 (마이그레이션 SQL) - refresh token, OTP 는 Redis 에
+ * 저장
  */
 @Getter
 @Entity
-@Table(
-    name = "users",
-    uniqueConstraints = @UniqueConstraint(name = "uk_users_login_id", columnNames = "login_id"))
+@Table(name = "users")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class User extends BaseEntity {
 
   private static final String DEFAULT_LOCALE = "en";
 
-  // 소셜 전용 사용자는 null (필수 여부는 회원가입 서비스에서 검증)
-  // PostgreSQL unique 는 NULL 중복 허용 → 소셜 사용자끼리 충돌 없음
-  @Column(name = "login_id", length = 30)
-  private String loginId;
-
-  // bcrypt 해시
-  @Column(name = "password_hash", length = 100)
-  private String passwordHash;
-
-  // 소셜 제공자에 따라 미제공 가능
+  // 소문자로 정규화해 저장 (서비스에서 처리)
   @Column(name = "email", length = 255)
   private String email;
+
+  // bcrypt 해시. 소셜 전용 사용자는 null
+  @Column(name = "password_hash", length = 100)
+  private String passwordHash;
 
   // 화면 입력 길이 제한은 Request DTO 에서 검증
   @Column(name = "nickname", nullable = false, length = 50)
@@ -64,9 +57,10 @@ public class User extends BaseEntity {
   @Column(name = "withdrawn_at")
   private Instant withdrawnAt;
 
-  public static User createWithPassword(String loginId, String passwordHash, String nickname) {
+  // 이메일 OTP 인증 완료 여부는 호출 전 서비스에서 확인
+  public static User createWithEmail(String email, String passwordHash, String nickname) {
     User user = new User();
-    user.loginId = loginId;
+    user.email = email;
     user.passwordHash = passwordHash;
     user.nickname = nickname;
     user.locale = DEFAULT_LOCALE;
@@ -80,9 +74,9 @@ public class User extends BaseEntity {
     return status == UserStatus.ACTIVE;
   }
 
-  // 로그인 정보 삭제 → 같은 아이디로 재가입 가능
+  // 로그인 정보·이메일 삭제 → 같은 이메일로 재가입 가능, 개인정보 미보관
   public void withdraw(Instant withdrawnAt) {
-    this.loginId = null;
+    this.email = null;
     this.passwordHash = null;
     this.status = UserStatus.WITHDRAWN;
     this.withdrawnAt = withdrawnAt;
