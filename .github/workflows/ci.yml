@@ -24,5 +24,8 @@ jobs:
       - name: Grant Gradle permission
         run: chmod +x gradlew
 
+      - name: Docker API version for Testcontainers
+        run: echo "api.version=1.44" > ~/.docker-java.properties
+
       - name: Build and Test
         run: ./gradlew build :api:integrationTest
