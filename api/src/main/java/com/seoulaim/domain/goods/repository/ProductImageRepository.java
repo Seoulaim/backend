@@ -6,6 +6,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -22,4 +23,8 @@ public interface ProductImageRepository extends JpaRepository<ProductImage, UUID
       order by i.displayOrder asc, i.id asc
       """)
   List<ProductThumbnail> findThumbnailCandidates(@Param("productIds") Collection<UUID> productIds);
+
+  @Modifying(flushAutomatically = true)
+  @Query("delete from ProductImage i where i.product.id = :productId")
+  void deleteAllByProductId(@Param("productId") UUID productId);
 }
