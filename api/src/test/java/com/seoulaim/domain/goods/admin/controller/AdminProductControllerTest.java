@@ -9,7 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.seoulaim.domain.goods.service.ProductService;
-import com.seoulaim.global.config.SecurityConfig;
+import com.seoulaim.global.security.SecurityTestConfig;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -22,7 +22,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(AdminProductController.class)
-@Import(SecurityConfig.class)
+@Import(SecurityTestConfig.class)
 @TestPropertySource(properties = "app.admin.key=test-admin-key")
 class AdminProductControllerTest {
 

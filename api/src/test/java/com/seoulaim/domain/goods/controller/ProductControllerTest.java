@@ -10,9 +10,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.seoulaim.domain.goods.dto.ProductDetailResponse;
 import com.seoulaim.domain.goods.service.ProductService;
-import com.seoulaim.global.config.SecurityConfig;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
+import com.seoulaim.global.security.SecurityTestConfig;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -24,7 +24,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(ProductController.class)
-@Import(SecurityConfig.class)
+@Import(SecurityTestConfig.class)
 class ProductControllerTest {
 
   @Autowired private MockMvc mockMvc;

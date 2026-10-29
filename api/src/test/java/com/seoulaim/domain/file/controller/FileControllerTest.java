@@ -11,7 +11,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.seoulaim.domain.file.dto.PresignedUploadResponse;
 import com.seoulaim.domain.file.service.FileService;
-import com.seoulaim.global.config.SecurityConfig;
+import com.seoulaim.global.security.SecurityTestConfig;
+import com.seoulaim.global.security.TestAccessTokens;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -19,12 +20,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(FileController.class)
-@Import(SecurityConfig.class)
+@Import(SecurityTestConfig.class)
 class FileControllerTest {
 
   private static final String REQUEST_BODY =
@@ -33,10 +35,11 @@ class FileControllerTest {
       """;
 
   @Autowired private MockMvc mockMvc;
+  @Autowired private TestAccessTokens tokens;
   @MockitoBean private FileService fileService;
 
   @Test
-  @DisplayName("X-User-Id 헤더 없이 presigned 업로드를 요청하면 401 을 반환한다")
+  @DisplayName("access token 없이 presigned 업로드를 요청하면 401 을 반환한다")
   void createPresignedUpload_헤더없음_401반환() throws Exception {
     mockMvc
         .perform(
@@ -50,7 +53,7 @@ class FileControllerTest {
   }
 
   @Test
-  @DisplayName("X-User-Id 헤더와 올바른 요청이면 200 과 presigned URL 정보를 반환한다")
+  @DisplayName("access token 과 올바른 요청이면 200 과 presigned URL 정보를 반환한다")
   void createPresignedUpload_정상요청_200반환() throws Exception {
     UUID userId = UUID.randomUUID();
     UUID fileId = UUID.randomUUID();
@@ -65,7 +68,7 @@ class FileControllerTest {
     mockMvc
         .perform(
             post("/api/v1/files/presigned-upload")
-                .header("X-User-Id", userId.toString())
+                .header(HttpHeaders.AUTHORIZATION, tokens.bearer(userId))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(REQUEST_BODY))
         .andExpect(status().isOk())

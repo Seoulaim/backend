@@ -12,21 +12,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.seoulaim.domain.diary.dto.DiarySubmitResponse;
 import com.seoulaim.domain.diary.service.DiaryService;
-import com.seoulaim.global.config.SecurityConfig;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
+import com.seoulaim.global.security.SecurityTestConfig;
+import com.seoulaim.global.security.TestAccessTokens;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(DiaryController.class)
-@Import(SecurityConfig.class)
+@Import(SecurityTestConfig.class)
 class DiaryControllerTest {
 
   private static final String REQUEST_BODY =
@@ -40,6 +42,7 @@ class DiaryControllerTest {
       """;
 
   @Autowired private MockMvc mockMvc;
+  @Autowired private TestAccessTokens tokens;
   @MockitoBean private DiaryService diaryService;
 
   @Test
@@ -52,7 +55,7 @@ class DiaryControllerTest {
     mockMvc
         .perform(
             post("/api/v1/diaries")
-                .header("X-User-Id", userId.toString())
+                .header(HttpHeaders.AUTHORIZATION, tokens.bearer(userId))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(REQUEST_BODY))
         .andExpect(status().isCreated())
@@ -60,7 +63,7 @@ class DiaryControllerTest {
   }
 
   @Test
-  @DisplayName("X-User-Id 헤더 없이 제출하면 401 을 반환한다")
+  @DisplayName("access token 없이 제출하면 401 을 반환한다")
   void submitDiary_헤더없음_401반환() throws Exception {
     mockMvc
         .perform(
@@ -79,7 +82,7 @@ class DiaryControllerTest {
     mockMvc
         .perform(
             post("/api/v1/diaries")
-                .header("X-User-Id", UUID.randomUUID().toString())
+                .header(HttpHeaders.AUTHORIZATION, tokens.bearer(UUID.randomUUID()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body))
         .andExpect(status().isBadRequest())
@@ -98,7 +101,9 @@ class DiaryControllerTest {
         .willThrow(new BusinessException(ErrorCode.DIARY_NOT_FOUND));
 
     mockMvc
-        .perform(get("/api/v1/diaries/{diaryId}", diaryId).header("X-User-Id", userId.toString()))
+        .perform(
+            get("/api/v1/diaries/{diaryId}", diaryId)
+                .header(HttpHeaders.AUTHORIZATION, tokens.bearer(userId)))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("DIARY_NOT_FOUND"));
   }
@@ -114,7 +119,7 @@ class DiaryControllerTest {
     mockMvc
         .perform(
             get("/api/v1/diaries/{diaryId}/download", diaryId)
-                .header("X-User-Id", userId.toString()))
+                .header(HttpHeaders.AUTHORIZATION, tokens.bearer(userId)))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("DIARY_NOT_FOUND"));
   }
