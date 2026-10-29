@@ -2,7 +2,7 @@
 
 다이어리는 실물 제작이 아니라 **PDF 다운로드** 상품이다. PDF 는 웹앱이 편집 화면에서 직접 만들고, 서버는 렌더링하지 않는다. 배송·제작 기한은 없다.
 
-헤더: 모든 요청에 `X-User-Id: <UUID>` (auth 연동 전 임시. JWT 도입 시 `Authorization` 으로 교체)
+헤더: 모든 요청에 `Authorization: Bearer <access token>`
 
 ## 흐름
 

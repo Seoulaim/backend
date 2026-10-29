@@ -6,7 +6,6 @@ import com.seoulaim.domain.diary.service.DiaryAssetService;
 import com.seoulaim.global.common.CurrentUserId;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import java.util.UUID;
@@ -25,11 +24,6 @@ public class DiaryAssetController {
 
   // 로그인 사용자에게만 노출하므로 userId 는 쓰지 않아도 받는다
   @Operation(summary = "다이어리 템플릿 목록 (활성만, 노출 순서)")
-  @Parameter(
-      name = "X-User-Id",
-      in = ParameterIn.HEADER,
-      required = true,
-      description = "auth 구현 전 임시 유저 식별 헤더 (UUID)")
   @GetMapping("/diary-templates")
   public List<DiaryTemplateResponse> getTemplates(
       @Parameter(hidden = true) @CurrentUserId UUID userId) {
@@ -37,11 +31,6 @@ public class DiaryAssetController {
   }
 
   @Operation(summary = "다이어리 스티커 목록 (활성만, 노출 순서)")
-  @Parameter(
-      name = "X-User-Id",
-      in = ParameterIn.HEADER,
-      required = true,
-      description = "auth 구현 전 임시 유저 식별 헤더 (UUID)")
   @GetMapping("/diary-stickers")
   public List<DiaryStickerResponse> getStickers(
       @Parameter(hidden = true) @CurrentUserId UUID userId) {
