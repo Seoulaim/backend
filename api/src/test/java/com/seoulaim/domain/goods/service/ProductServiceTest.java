@@ -21,6 +21,7 @@ import com.seoulaim.domain.goods.entity.ProductImage;
 import com.seoulaim.domain.goods.repository.ProductCategoryRepository;
 import com.seoulaim.domain.goods.repository.ProductImageRepository;
 import com.seoulaim.domain.goods.repository.ProductRepository;
+import com.seoulaim.domain.order.service.OrderItemService;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
 import java.util.List;
@@ -43,6 +44,7 @@ class ProductServiceTest {
   @Mock private ProductImageRepository productImageRepository;
   @Mock private ProductCategoryRepository productCategoryRepository;
   @Mock private FileService fileService;
+  @Mock private OrderItemService orderItemService;
   @InjectMocks private ProductService productService;
 
   @Test
@@ -195,5 +197,29 @@ class ProductServiceTest {
         .extracting(exception -> ((BusinessException) exception).getErrorCode())
         .isEqualTo(ErrorCode.GOODS_NOT_FOUND);
     verify(productImageRepository, never()).deleteAllByProductId(any());
+  }
+
+  @Test
+  @DisplayName("주문 이력이 있는 상품을 삭제하면 GOODS_IN_USE 예외가 발생하고 삭제하지 않는다")
+  void delete_주문이력있음_예외발생() {
+    Product product =
+        Product.create(
+            ProductCategory.create("Doll", 1),
+            UUID.randomUUID(),
+            null,
+            "Doll",
+            null,
+            null,
+            1000L,
+            false);
+    given(productRepository.findById(product.getId())).willReturn(Optional.of(product));
+    given(orderItemService.existsByProductId(product.getId())).willReturn(true);
+
+    assertThatThrownBy(() -> productService.delete(product.getId()))
+        .isInstanceOf(BusinessException.class)
+        .extracting(exception -> ((BusinessException) exception).getErrorCode())
+        .isEqualTo(ErrorCode.GOODS_IN_USE);
+    verify(productImageRepository, never()).deleteAllByProductId(any());
+    verify(productRepository, never()).delete(any(Product.class));
   }
 }

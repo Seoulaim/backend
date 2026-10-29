@@ -24,7 +24,7 @@ public class GlobalExceptionHandler {
             new ErrorResponse(
                 errorCode.getCode(),
                 errorCode.getMessage(),
-                Collections.emptyMap(),
+                exception.getFields(),
                 MDC.get("traceId")));
   }
 
