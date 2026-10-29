@@ -15,6 +15,9 @@ jwt:
   refresh-token-expiration: ${JWT_REFRESH_TOKEN_EXPIRATION:14d}
 
 app:
+  admin:
+    # 관리자 API 임시 인증 키 (X-Admin-Key)
+    key: ${ADMIN_KEY:local-admin-key}
   storage:
     # 로컬도 실제 S3 개발용 버킷을 쓴다. endpoint 없음
     region: ${AWS_REGION:ap-northeast-2}

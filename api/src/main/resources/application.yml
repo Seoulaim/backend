@@ -25,6 +25,9 @@ spring:
       write-dates-as-timestamps: false
 
 app:
+  admin:
+    # 관리자 API 임시 인증 키 (X-Admin-Key)
+    key: ${ADMIN_KEY}
   storage:
     # 비어 있으면 AWS 기본 S3 엔드포인트를 쓴다
     endpoint: ${STORAGE_ENDPOINT:}
