@@ -1,5 +1,6 @@
 package com.seoulaim.domain.user.service;
 
+import com.seoulaim.domain.user.dto.UserResponse;
 import com.seoulaim.domain.user.entity.User;
 import com.seoulaim.domain.user.repository.UserRepository;
 import com.seoulaim.global.exception.BusinessException;
@@ -37,6 +38,10 @@ public class UserService {
     return userRepository
         .findById(userId)
         .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+  }
+
+  public UserResponse getUserProfile(UUID userId) {
+    return UserResponse.from(getUser(userId));
   }
 
   @Transactional
