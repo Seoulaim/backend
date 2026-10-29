@@ -7,9 +7,13 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.UUID;
 import org.slf4j.MDC;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+// 시큐리티 필터보다 먼저 실행 → 401·403 응답에도 traceId 포함
+@Order(Ordered.HIGHEST_PRECEDENCE)
 @Component
 public class TraceIdFilter extends OncePerRequestFilter {
 
