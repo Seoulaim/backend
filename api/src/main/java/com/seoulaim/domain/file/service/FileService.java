@@ -17,6 +17,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -80,6 +81,14 @@ public class FileService {
         .findById(fileId)
         .map(FileResponse::from)
         .orElseThrow(() -> new BusinessException(ErrorCode.FILE_NOT_FOUND));
+  }
+
+  /** s3 key 로 파일을 조회한다. 없는 key 는 결과에서 빠진다. */
+  public List<FileResponse> getByS3Keys(Collection<String> s3Keys) {
+    if (s3Keys.isEmpty()) {
+      return List.of();
+    }
+    return fileRepository.findAllByS3KeyIn(s3Keys).stream().map(FileResponse::from).toList();
   }
 
   /**

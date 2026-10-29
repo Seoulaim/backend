@@ -26,4 +26,9 @@ public class ProductCategory extends BaseEntity {
     category.displayOrder = displayOrder;
     return category;
   }
+
+  public void update(String name, int displayOrder) {
+    this.name = name;
+    this.displayOrder = displayOrder;
+  }
 }
