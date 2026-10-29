@@ -7,7 +7,6 @@ import com.seoulaim.domain.file.service.FileService;
 import com.seoulaim.global.common.CurrentUserId;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.UUID;
@@ -28,11 +27,6 @@ public class FileController {
   private final FileService fileService;
 
   @Operation(summary = "이미지(다이어리는 PDF 포함) 업로드용 presigned PUT URL 발급")
-  @Parameter(
-      name = "X-User-Id",
-      in = ParameterIn.HEADER,
-      required = true,
-      description = "auth 구현 전 임시 유저 식별 헤더 (UUID)")
   @PostMapping("/presigned-upload")
   public PresignedUploadResponse createPresignedUpload(
       @Parameter(hidden = true) @CurrentUserId UUID userId,

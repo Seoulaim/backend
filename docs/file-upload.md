@@ -20,7 +20,7 @@ iOS                          API 서버                         S3
 
 `POST /api/v1/files/presigned-upload`
 
-헤더: `X-User-Id: <UUID>` (auth 연동 전 임시. JWT 도입 시 `Authorization` 으로 교체되며 prod 에서는 401)
+헤더: `Authorization: Bearer <access token>`
 
 ```json
 { "domain": "REVIEW", "contentType": "image/jpeg", "sizeBytes": 482113 }
@@ -52,7 +52,7 @@ iOS                          API 서버                         S3
 | `FILE_INVALID_DOMAIN` | 400 | domain 값 오류 |
 | `FILE_INVALID_CONTENT_TYPE` | 400 | 허용되지 않은 형식 |
 | `FILE_TOO_LARGE` | 400 | 이미지 10MB / PDF 20MB 초과 |
-| `AUTH_INVALID_TOKEN` | 401 | X-User-Id 없음/형식 오류 |
+| `AUTH_INVALID_TOKEN` | 401 | access token 없음·형식 오류 |
 
 ## 2. S3 업로드 (iOS)
 

@@ -14,7 +14,7 @@ iOS                                API 서버                          토스
  │ ◀──── 200 { orderId, status: "PAID" }  또는  402 PAYMENT_FAILED
 ```
 
-헤더: 모든 요청에 `X-User-Id: <UUID>` (auth 연동 전 임시. JWT 도입 시 `Authorization` 으로 교체되며 prod 에서는 401)
+헤더: 모든 요청에 `Authorization: Bearer <access token>`
 
 ## 1. 주문 생성
 

@@ -16,7 +16,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @EnableConfigurationProperties(AdminProperties.class)
 public class WebMvcConfig implements WebMvcConfigurer {
 
-  // 프로파일에 따라 헤더 기반(!prod) 또는 항상 거부(prod) 구현이 주입된다
+  // JWT 인증 정보에서 유저 ID 를 꺼내는 구현 (JwtCurrentUserIdArgumentResolver)
   private final CurrentUserIdArgumentResolver currentUserIdArgumentResolver;
   private final AdminKeyInterceptor adminKeyInterceptor;
 

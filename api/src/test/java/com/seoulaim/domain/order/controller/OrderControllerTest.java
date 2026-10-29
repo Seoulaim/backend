@@ -12,19 +12,21 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.seoulaim.domain.order.dto.CreateOrderResponse;
 import com.seoulaim.domain.order.service.OrderService;
 import com.seoulaim.domain.order.service.PaymentService;
-import com.seoulaim.global.config.SecurityConfig;
+import com.seoulaim.global.security.SecurityTestConfig;
+import com.seoulaim.global.security.TestAccessTokens;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(OrderController.class)
-@Import(SecurityConfig.class)
+@Import(SecurityTestConfig.class)
 class OrderControllerTest {
 
   private static final String REQUEST_BODY =
@@ -41,6 +43,7 @@ class OrderControllerTest {
       """;
 
   @Autowired private MockMvc mockMvc;
+  @Autowired private TestAccessTokens tokens;
   @MockitoBean private OrderService orderService;
   @MockitoBean private PaymentService paymentService;
 
@@ -55,7 +58,7 @@ class OrderControllerTest {
     mockMvc
         .perform(
             post("/api/v1/orders")
-                .header("X-User-Id", userId.toString())
+                .header(HttpHeaders.AUTHORIZATION, tokens.bearer(userId))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(REQUEST_BODY))
         .andExpect(status().isCreated())
@@ -66,7 +69,7 @@ class OrderControllerTest {
   }
 
   @Test
-  @DisplayName("X-User-Id 헤더 없이 주문하면 401 을 반환한다")
+  @DisplayName("access token 없이 주문하면 401 을 반환한다")
   void createOrder_헤더없음_401반환() throws Exception {
     mockMvc
         .perform(
@@ -88,7 +91,7 @@ class OrderControllerTest {
     mockMvc
         .perform(
             post("/api/v1/orders")
-                .header("X-User-Id", UUID.randomUUID().toString())
+                .header(HttpHeaders.AUTHORIZATION, tokens.bearer(UUID.randomUUID()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body))
         .andExpect(status().isBadRequest())
