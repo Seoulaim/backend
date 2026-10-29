@@ -29,6 +29,7 @@ public enum ErrorCode {
   GOODS_NOT_FOUND(HttpStatus.NOT_FOUND, "GOODS_NOT_FOUND", "상품을 찾을 수 없습니다"),
   GOODS_CATEGORY_NOT_FOUND(HttpStatus.NOT_FOUND, "GOODS_CATEGORY_NOT_FOUND", "상품 카테고리를 찾을 수 없습니다"),
   GOODS_INVALID_CURSOR(HttpStatus.BAD_REQUEST, "GOODS_INVALID_CURSOR", "잘못된 커서 값입니다"),
+  GOODS_IN_USE(HttpStatus.CONFLICT, "GOODS_IN_USE", "주문 이력이 있는 상품은 삭제할 수 없습니다"),
 
   // FILE
   FILE_NOT_FOUND(HttpStatus.NOT_FOUND, "FILE_NOT_FOUND", "파일을 찾을 수 없습니다"),
@@ -36,6 +37,18 @@ public enum ErrorCode {
       HttpStatus.BAD_REQUEST, "FILE_INVALID_CONTENT_TYPE", "허용되지 않는 파일 형식입니다"),
   FILE_TOO_LARGE(HttpStatus.BAD_REQUEST, "FILE_TOO_LARGE", "파일 크기가 허용 범위를 초과했습니다"),
   FILE_INVALID_DOMAIN(HttpStatus.BAD_REQUEST, "FILE_INVALID_DOMAIN", "잘못된 파일 도메인입니다"),
+
+  // ORDER
+  ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "주문을 찾을 수 없습니다"),
+  ORDER_ADDRESS_NOT_SEOUL(
+      HttpStatus.BAD_REQUEST, "ORDER_ADDRESS_NOT_SEOUL", "서울 지역 주소로만 배송할 수 있습니다"),
+  ORDER_INVALID_ITEM(HttpStatus.BAD_REQUEST, "ORDER_INVALID_ITEM", "주문할 수 없는 상품이 포함되어 있습니다"),
+
+  // PAYMENT
+  PAYMENT_AMOUNT_MISMATCH(
+      HttpStatus.BAD_REQUEST, "PAYMENT_AMOUNT_MISMATCH", "결제 금액이 주문 금액과 일치하지 않습니다"),
+  PAYMENT_FAILED(HttpStatus.PAYMENT_REQUIRED, "PAYMENT_FAILED", "결제에 실패했습니다"),
+  PAYMENT_GATEWAY_ERROR(HttpStatus.BAD_GATEWAY, "PAYMENT_GATEWAY_ERROR", "결제사 통신 중 오류가 발생했습니다"),
   ;
 
   private final HttpStatus status;

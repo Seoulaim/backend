@@ -1,0 +1,7 @@
+# 테스트 전용 설정. classpath:/config/application.yml 은 main 의 application.yml 보다 우선한다
+# 실제 토스를 호출하는 테스트는 없으므로 더미 키로 컨텍스트만 띄운다
+app:
+  payment:
+    toss:
+      secret-key: test_sk_dummy
+      client-key: test_ck_dummy

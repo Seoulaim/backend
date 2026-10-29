@@ -8,6 +8,7 @@ import com.seoulaim.domain.goods.admin.dto.AdminProductRequest;
 import com.seoulaim.domain.goods.admin.dto.AdminProductSummaryResponse;
 import com.seoulaim.domain.goods.dto.ProductCursor;
 import com.seoulaim.domain.goods.dto.ProductDetailResponse;
+import com.seoulaim.domain.goods.dto.ProductOrderSnapshot;
 import com.seoulaim.domain.goods.dto.ProductSearchCondition;
 import com.seoulaim.domain.goods.dto.ProductSort;
 import com.seoulaim.domain.goods.dto.ProductSummaryResponse;
@@ -19,10 +20,12 @@ import com.seoulaim.domain.goods.repository.ProductCategoryRepository;
 import com.seoulaim.domain.goods.repository.ProductImageRepository;
 import com.seoulaim.domain.goods.repository.ProductRepository;
 import com.seoulaim.domain.goods.repository.ProductSpecifications;
+import com.seoulaim.domain.order.service.OrderItemService;
 import com.seoulaim.global.common.CursorPageResponse;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -46,6 +49,7 @@ public class ProductService {
   private final ProductImageRepository productImageRepository;
   private final ProductCategoryRepository productCategoryRepository;
   private final FileService fileService;
+  private final OrderItemService orderItemService;
 
   public ProductDetailResponse getById(UUID productId) {
     Product product = findProduct(productId);
@@ -82,6 +86,13 @@ public class ProductService {
     String nextCursor = hasNext ? ProductCursor.of(sort, products.getLast()).encode() : null;
 
     return new CursorPageResponse<>(toSummaries(products), nextCursor);
+  }
+
+  /** 존재하는 상품만 돌려준다. 없는 id 판별은 호출하는 쪽에서 한다. */
+  public List<ProductOrderSnapshot> getOrderSnapshots(Collection<UUID> productIds) {
+    return productRepository.findAllById(productIds).stream()
+        .map(ProductOrderSnapshot::from)
+        .toList();
   }
 
   public List<AdminProductSummaryResponse> getAdminProducts() {
@@ -155,7 +166,9 @@ public class ProductService {
   @Transactional
   public void delete(UUID productId) {
     Product product = findProduct(productId);
-    // TODO(#24): order_items 테이블 반영 후 주문 이력이 있는 상품은 삭제를 막는다
+    if (orderItemService.existsByProductId(productId)) {
+      throw new BusinessException(ErrorCode.GOODS_IN_USE);
+    }
     productImageRepository.deleteAllByProductId(productId);
     productRepository.delete(product);
   }

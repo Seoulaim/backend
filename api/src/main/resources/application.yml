@@ -37,3 +37,12 @@ app:
     access-key: ${STORAGE_ACCESS_KEY:}
     secret-key: ${STORAGE_SECRET_KEY:}
     path-style-access: false
+  order:
+    # 배송비 (원). 서울 단일 권역이라 고정
+    shipping-fee: ${ORDER_SHIPPING_FEE:3000}
+  payment:
+    toss:
+      # 토스페이먼츠 시크릿 키. 모든 프로파일에서 환경변수 필수 (기본값 없음)
+      secret-key: ${TOSS_SECRET_KEY}
+      # iOS 결제창 SDK 에 내려주는 클라이언트 키
+      client-key: ${TOSS_CLIENT_KEY:}
