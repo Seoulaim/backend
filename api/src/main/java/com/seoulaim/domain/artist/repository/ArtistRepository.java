@@ -1,6 +1,7 @@
 package com.seoulaim.domain.artist.repository;
 
 import com.seoulaim.domain.artist.entity.Artist;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -35,4 +36,8 @@ public interface ArtistRepository extends JpaRepository<Artist, UUID> {
       nativeQuery = true)
   List<Artist> searchByKeyword(
       @Param("pattern") String pattern, @Param("cursor") String cursor, @Param("limit") int limit);
+
+  // bias 저장 시 존재 확인 + 응답용 그룹 정보 함께 조회
+  @Query("SELECT a FROM Artist a JOIN FETCH a.artistGroup WHERE a.id IN :ids")
+  List<Artist> findAllWithGroupByIdIn(@Param("ids") Collection<UUID> ids);
 }
