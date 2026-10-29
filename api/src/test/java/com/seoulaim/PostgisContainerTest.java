@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 @Tag("integration")
@@ -15,8 +15,8 @@ class PostgisContainerTest {
 
   @Test
   void postgisContainerStarts() {
-    try (PostgreSQLContainer<?> postgres =
-        new PostgreSQLContainer<>(POSTGIS_IMAGE)
+    try (PostgreSQLContainer postgres =
+        new PostgreSQLContainer(POSTGIS_IMAGE)
             .withDatabaseName("seoulaim")
             .withUsername("test")
             .withPassword("test")) {

@@ -69,4 +69,23 @@ public class Product extends BaseEntity {
     product.salesCount30d = 0;
     return product;
   }
+
+  public void update(
+      ProductCategory category,
+      UUID artistGroupId,
+      UUID artistId,
+      String name,
+      String summary,
+      String detailImageKey,
+      long price,
+      boolean isDiary) {
+    this.category = category;
+    this.artistGroupId = artistGroupId;
+    this.artistId = artistId;
+    this.name = name;
+    this.summary = summary;
+    this.detailImageKey = detailImageKey;
+    this.price = price;
+    this.isDiary = isDiary;
+  }
 }
