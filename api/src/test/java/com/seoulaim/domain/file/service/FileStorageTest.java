@@ -3,6 +3,7 @@ package com.seoulaim.domain.file.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -26,6 +27,8 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsResponse;
 import software.amazon.awssdk.services.s3.model.S3Error;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
+import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
@@ -109,5 +112,28 @@ class FileStorageTest {
   void deleteAll_빈목록_호출안함() {
     assertThat(fileStorage.deleteAll(List.of())).isEmpty();
     verify(s3Client, never()).deleteObjects(any(Consumer.class));
+  }
+
+  @Test
+  @DisplayName("presignGet 은 버킷·key·첨부 파일명·만료시간을 서명 요청에 담는다")
+  void presignGet_정상요청_서명요청에값포함() throws Exception {
+    PresignedGetObjectRequest presignedGet = mock(PresignedGetObjectRequest.class);
+    given(presignedGet.url())
+        .willReturn(URI.create("https://" + BUCKET + ".s3.amazonaws.com/signed").toURL());
+    given(s3Presigner.presignGetObject(any(GetObjectPresignRequest.class)))
+        .willReturn(presignedGet);
+
+    fileStorage.presignGet(
+        "diary/2026/10/a.pdf", "seoulaim-diary-ORD-1.pdf", Duration.ofMinutes(10));
+
+    ArgumentCaptor<GetObjectPresignRequest> captor =
+        ArgumentCaptor.forClass(GetObjectPresignRequest.class);
+    verify(s3Presigner).presignGetObject(captor.capture());
+    GetObjectPresignRequest request = captor.getValue();
+    assertThat(request.signatureDuration()).isEqualTo(Duration.ofMinutes(10));
+    assertThat(request.getObjectRequest().bucket()).isEqualTo(BUCKET);
+    assertThat(request.getObjectRequest().key()).isEqualTo("diary/2026/10/a.pdf");
+    assertThat(request.getObjectRequest().responseContentDisposition())
+        .isEqualTo("attachment; filename=\"seoulaim-diary-ORD-1.pdf\"");
   }
 }

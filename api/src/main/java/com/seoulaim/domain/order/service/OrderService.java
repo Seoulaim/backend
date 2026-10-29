@@ -5,11 +5,13 @@ import com.seoulaim.domain.goods.service.ProductService;
 import com.seoulaim.domain.order.dto.CreateOrderRequest;
 import com.seoulaim.domain.order.dto.CreateOrderResponse;
 import com.seoulaim.domain.order.dto.OrderDetailResponse;
+import com.seoulaim.domain.order.dto.OrderItemInfo;
 import com.seoulaim.domain.order.dto.OrderItemRequest;
 import com.seoulaim.domain.order.dto.OrderSummaryResponse;
 import com.seoulaim.domain.order.entity.ContactType;
 import com.seoulaim.domain.order.entity.Order;
 import com.seoulaim.domain.order.entity.OrderItem;
+import com.seoulaim.domain.order.entity.OrderStatus;
 import com.seoulaim.domain.order.entity.Payment;
 import com.seoulaim.domain.order.entity.PaymentStatus;
 import com.seoulaim.domain.order.entity.PgProvider;
@@ -25,8 +27,12 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -131,6 +137,82 @@ public class OrderService {
     PaymentStatus paymentStatus =
         paymentRepository.findByOrderId(orderId).map(Payment::getStatus).orElse(null);
     return OrderDetailResponse.of(order, items, paymentStatus);
+  }
+
+  /** 결제 완료된 내 주문 중 다이어리 상품 줄. 다이어리 제출 여부는 diary 도메인이 거른다. */
+  public List<OrderItemInfo> getPaidDiaryItems(UUID userId) {
+    List<Order> orders =
+        orderRepository.findAllByUserIdAndStatusOrderByOrderedAtDescIdDesc(
+            userId, OrderStatus.PAID);
+    if (orders.isEmpty()) {
+      return List.of();
+    }
+    List<OrderItem> items =
+        orderItemRepository.findAllByOrderIdInOrderByIdAsc(
+            orders.stream().map(Order::getId).toList());
+    Set<UUID> diaryProductIds = findDiaryProductIds(items);
+    List<OrderItem> diaryItems =
+        items.stream().filter(item -> diaryProductIds.contains(item.getProductId())).toList();
+    return toItemInfos(orders, diaryItems);
+  }
+
+  /** 내 결제 완료 주문의 다이어리 상품 줄이면 반환한다. 남의 주문·미결제·일반 상품이면 empty. */
+  public Optional<OrderItemInfo> findPaidDiaryItem(UUID userId, UUID orderItemId) {
+    OrderItem item = orderItemRepository.findById(orderItemId).orElse(null);
+    if (item == null) {
+      return Optional.empty();
+    }
+    Optional<Order> order =
+        orderRepository.findByIdAndUserId(item.getOrderId(), userId).filter(Order::isPaid);
+    if (order.isEmpty() || findDiaryProductIds(List.of(item)).isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(toItemInfos(List.of(order.get()), List.of(item)).getFirst());
+  }
+
+  /** 주문 상품 줄을 주문번호와 함께 조회한다. 없는 id 는 결과에서 빠진다. */
+  public List<OrderItemInfo> getOrderItems(Collection<UUID> orderItemIds) {
+    if (orderItemIds.isEmpty()) {
+      return List.of();
+    }
+    List<OrderItem> items = orderItemRepository.findAllById(orderItemIds);
+    List<Order> orders =
+        orderRepository.findAllById(items.stream().map(OrderItem::getOrderId).distinct().toList());
+    return toItemInfos(orders, items);
+  }
+
+  private Set<UUID> findDiaryProductIds(List<OrderItem> items) {
+    List<UUID> productIds = items.stream().map(OrderItem::getProductId).distinct().toList();
+    return productService.getOrderSnapshots(productIds).stream()
+        .filter(ProductOrderSnapshot::isDiary)
+        .map(ProductOrderSnapshot::id)
+        .collect(Collectors.toSet());
+  }
+
+  private List<OrderItemInfo> toItemInfos(List<Order> orders, List<OrderItem> items) {
+    if (items.isEmpty()) {
+      return List.of();
+    }
+    Map<UUID, Order> ordersById =
+        orders.stream().collect(Collectors.toMap(Order::getId, Function.identity()));
+    // 결제 승인 전에는 approvedAt 이 null 이라 toMap 을 쓸 수 없다
+    Map<UUID, Instant> paidAtByOrderId = new HashMap<>();
+    paymentRepository
+        .findAllByOrderIdIn(ordersById.keySet())
+        .forEach(payment -> paidAtByOrderId.put(payment.getOrderId(), payment.getApprovedAt()));
+    return items.stream()
+        .map(
+            item -> {
+              Order order = ordersById.get(item.getOrderId());
+              return new OrderItemInfo(
+                  item.getId(),
+                  order.getId(),
+                  order.getOrderNumber(),
+                  item.getProductId(),
+                  item.getProductName(),
+                  paidAtByOrderId.get(order.getId()));
+            })
+        .toList();
   }
 
   private void validateSeoulAddress(String addressLine1) {

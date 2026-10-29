@@ -49,6 +49,14 @@ public enum ErrorCode {
       HttpStatus.BAD_REQUEST, "PAYMENT_AMOUNT_MISMATCH", "결제 금액이 주문 금액과 일치하지 않습니다"),
   PAYMENT_FAILED(HttpStatus.PAYMENT_REQUIRED, "PAYMENT_FAILED", "결제에 실패했습니다"),
   PAYMENT_GATEWAY_ERROR(HttpStatus.BAD_GATEWAY, "PAYMENT_GATEWAY_ERROR", "결제사 통신 중 오류가 발생했습니다"),
+
+  // DIARY
+  DIARY_NOT_FOUND(HttpStatus.NOT_FOUND, "DIARY_NOT_FOUND", "다이어리를 찾을 수 없습니다"),
+  DIARY_ORDER_NOT_ELIGIBLE(
+      HttpStatus.BAD_REQUEST, "DIARY_ORDER_NOT_ELIGIBLE", "다이어리를 제출할 수 없는 주문입니다"),
+  DIARY_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "DIARY_ALREADY_SUBMITTED", "이미 제출된 다이어리입니다"),
+  DIARY_INVALID_PDF(HttpStatus.BAD_REQUEST, "DIARY_INVALID_PDF", "다이어리 PDF 파일이 올바르지 않습니다"),
+  DIARY_CONTENT_TOO_LARGE(HttpStatus.BAD_REQUEST, "DIARY_CONTENT_TOO_LARGE", "다이어리 편집 데이터가 너무 큽니다"),
   ;
 
   private final HttpStatus status;

@@ -2,7 +2,9 @@ package com.seoulaim.domain.file.service;
 
 import com.github.f4b6a3.uuid.UuidCreator;
 import com.seoulaim.domain.file.dto.FileCleanupResult;
+import com.seoulaim.domain.file.dto.FileDetail;
 import com.seoulaim.domain.file.dto.FileResponse;
+import com.seoulaim.domain.file.dto.PresignedDownloadResponse;
 import com.seoulaim.domain.file.dto.PresignedUploadRequest;
 import com.seoulaim.domain.file.dto.PresignedUploadResponse;
 import com.seoulaim.domain.file.entity.File;
@@ -21,6 +23,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -32,17 +35,22 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class FileService {
 
+  public static final String PDF_CONTENT_TYPE = "application/pdf";
+
   static final long MAX_SIZE_BYTES = 10L * 1024 * 1024;
+  static final long MAX_PDF_SIZE_BYTES = 20L * 1024 * 1024;
   static final Duration UPLOAD_URL_EXPIRATION = Duration.ofMinutes(10);
+  static final Duration DOWNLOAD_URL_EXPIRATION = Duration.ofMinutes(10);
   static final Duration PENDING_RETENTION = Duration.ofHours(48);
 
-  // 허용 Content-Type → s3 key 확장자
+  // 허용 이미지 Content-Type → s3 key 확장자
   private static final Map<String, String> EXTENSIONS =
       Map.of(
           "image/jpeg", "jpg",
           "image/png", "png",
           "image/webp", "webp",
           "image/heic", "heic");
+  private static final String PDF_EXTENSION = "pdf";
   private static final DateTimeFormatter KEY_MONTH_FORMAT =
       DateTimeFormatter.ofPattern("yyyy/MM").withZone(ZoneOffset.UTC);
 
@@ -54,11 +62,12 @@ public class FileService {
   public PresignedUploadResponse createPresignedUpload(
       UUID uploaderId, PresignedUploadRequest request) {
     FileDomain domain = FileDomain.from(request.domain());
-    String extension = EXTENSIONS.get(request.contentType());
+    boolean pdf = isDiaryPdf(domain, request.contentType());
+    String extension = pdf ? PDF_EXTENSION : EXTENSIONS.get(request.contentType());
     if (extension == null) {
       throw new BusinessException(ErrorCode.FILE_INVALID_CONTENT_TYPE);
     }
-    if (request.sizeBytes() > MAX_SIZE_BYTES) {
+    if (request.sizeBytes() > (pdf ? MAX_PDF_SIZE_BYTES : MAX_SIZE_BYTES)) {
       throw new BusinessException(ErrorCode.FILE_TOO_LARGE);
     }
 
@@ -81,6 +90,18 @@ public class FileService {
         .findById(fileId)
         .map(FileResponse::from)
         .orElseThrow(() -> new BusinessException(ErrorCode.FILE_NOT_FOUND));
+  }
+
+  /** 다른 도메인이 업로더·도메인·Content-Type 까지 검증할 때 쓴다. 없으면 empty. */
+  public Optional<FileDetail> findDetail(UUID fileId) {
+    return fileRepository.findById(fileId).map(FileDetail::from);
+  }
+
+  /** 첨부 파일로 내려받는 presigned GET URL 을 발급한다. 객체 존재 여부는 확인하지 않는다. */
+  public PresignedDownloadResponse createPresignedDownload(String s3Key, String filename) {
+    URL downloadUrl = fileStorage.presignGet(s3Key, filename, DOWNLOAD_URL_EXPIRATION);
+    return new PresignedDownloadResponse(
+        downloadUrl.toString(), clock.instant().plus(DOWNLOAD_URL_EXPIRATION));
   }
 
   /** s3 key 로 파일을 조회한다. 없는 key 는 결과에서 빠진다. */
@@ -126,6 +147,11 @@ public class FileService {
     fileRepository.deleteAllInBatch(deletable);
 
     return new FileCleanupResult(staleFiles.size(), deletable.size());
+  }
+
+  // PDF 는 다이어리 제출용으로만 받는다
+  private static boolean isDiaryPdf(FileDomain domain, String contentType) {
+    return domain == FileDomain.DIARY && PDF_CONTENT_TYPE.equals(contentType);
   }
 
   private String generateKey(FileDomain domain, Instant now, String extension) {

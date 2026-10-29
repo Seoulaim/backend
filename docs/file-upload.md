@@ -29,8 +29,10 @@ iOS                          API 서버                         S3
 | 필드 | 규칙 |
 |---|---|
 | `domain` | `REVIEW` / `PLAN` / `PROFILE` / `PRODUCT` / `DIARY` / `INQUIRY` |
-| `contentType` | `image/jpeg`, `image/png`, `image/webp`, `image/heic` |
-| `sizeBytes` | 실제 업로드할 바이트 수. 최대 10MB (10,485,760) |
+| `contentType` | `image/jpeg`, `image/png`, `image/webp`, `image/heic`. `domain` 이 `DIARY` 일 때만 `application/pdf` 추가 허용 |
+| `sizeBytes` | 실제 업로드할 Blob/File 의 byte 길이와 **정확히 같아야** 한다. 이미지 최대 10MB (10,485,760), PDF 최대 20MB (20,971,520) |
+
+> presigned 요청의 `sizeBytes` 는 실제 업로드할 Blob/File 의 byte 길이와 정확히 같아야 하며, 업로드 시 `Content-Type` 도 요청 값과 동일해야 한다. PDF 는 생성을 마친 뒤 `blob.size` 로 요청할 것.
 
 응답 200
 
@@ -49,7 +51,7 @@ iOS                          API 서버                         S3
 |---|---|---|
 | `FILE_INVALID_DOMAIN` | 400 | domain 값 오류 |
 | `FILE_INVALID_CONTENT_TYPE` | 400 | 허용되지 않은 형식 |
-| `FILE_TOO_LARGE` | 400 | 10MB 초과 |
+| `FILE_TOO_LARGE` | 400 | 이미지 10MB / PDF 20MB 초과 |
 | `AUTH_INVALID_TOKEN` | 401 | X-User-Id 없음/형식 오류 |
 
 ## 2. S3 업로드 (iOS)
@@ -64,6 +66,18 @@ request.httpMethod = "PUT"
 request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
 let (_, response) = try await URLSession.shared.upload(for: request, from: imageData)
 // 200 이면 성공
+```
+
+웹앱(fetch) 예시 — `Content-Length` 는 브라우저가 body 크기로 자동 설정한다:
+
+```js
+await fetch(uploadUrl, { method: "PUT", headers: { "Content-Type": blob.type }, body: blob }); // blob.size === sizeBytes, blob.type === contentType
+```
+
+로컬 검증용 스크립트 (표준 라이브러리만 사용, Content-Length 를 파일 크기로 명시):
+
+```bash
+python3 scripts/upload-test.py "<uploadUrl>" ./diary.pdf application/pdf
 ```
 
 curl 로 확인할 때:
