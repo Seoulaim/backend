@@ -6,6 +6,9 @@ plugins {
 
 description = 'api'
 
+// Spring Boot dependency-management 가 testcontainers 를 1.21.3 으로 고정하므로 BOM 과 같은 버전으로 덮어쓴다
+ext['testcontainers.version'] = '2.0.2'
+
 dependencies {
     implementation project(':algorithm-core')
 
@@ -19,6 +22,9 @@ dependencies {
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.14'
 
     implementation 'com.github.f4b6a3:uuid-creator:6.0.0'
+
+    implementation platform('software.amazon.awssdk:bom:2.29.0')
+    implementation 'software.amazon.awssdk:s3'
 
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.flywaydb:flyway-database-postgresql'
@@ -35,8 +41,9 @@ dependencies {
 
     // Testcontainers
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
-    testImplementation 'org.testcontainers:junit-jupiter'
-    testImplementation 'org.testcontainers:postgresql'
+    testImplementation platform('org.testcontainers:testcontainers-bom:2.0.2')
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    testImplementation 'org.testcontainers:testcontainers-postgresql'
 
     testCompileOnly 'org.projectlombok:lombok'
     testAnnotationProcessor 'org.projectlombok:lombok'
