@@ -27,7 +27,7 @@ public class FileController {
 
   private final FileService fileService;
 
-  @Operation(summary = "이미지 업로드용 presigned PUT URL 발급")
+  @Operation(summary = "이미지(다이어리는 PDF 포함) 업로드용 presigned PUT URL 발급")
   @Parameter(
       name = "X-User-Id",
       in = ParameterIn.HEADER,

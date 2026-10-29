@@ -162,4 +162,57 @@ class FileServiceTest {
     assertThat(result).isEqualTo(new FileCleanupResult(0, 0));
     verify(fileStorage, never()).deleteAll(any());
   }
+
+  @Test
+  @DisplayName("DIARY 도메인은 20MB 이하 PDF 를 받고 key 확장자를 pdf 로 만든다")
+  void createPresignedUpload_다이어리PDF_허용() throws Exception {
+    given(fileRepository.save(any(File.class))).willAnswer(invocation -> invocation.getArgument(0));
+    given(fileStorage.presignPut(anyString(), anyString(), anyLong(), any()))
+        .willReturn(URI.create("https://example.com/signed").toURL());
+
+    PresignedUploadResponse response =
+        fileService.createPresignedUpload(
+            UPLOADER_ID,
+            new PresignedUploadRequest(
+                "DIARY", FileService.PDF_CONTENT_TYPE, FileService.MAX_PDF_SIZE_BYTES));
+
+    assertThat(response.s3Key()).startsWith("diary/2026/10/").endsWith(".pdf");
+  }
+
+  @Test
+  @DisplayName("DIARY 가 아닌 도메인에 PDF 를 올리면 FILE_INVALID_CONTENT_TYPE 예외가 발생한다")
+  void createPresignedUpload_다이어리외PDF_예외발생() {
+    PresignedUploadRequest request =
+        new PresignedUploadRequest("REVIEW", FileService.PDF_CONTENT_TYPE, 1024L);
+
+    assertThatThrownBy(() -> fileService.createPresignedUpload(UPLOADER_ID, request))
+        .isInstanceOf(BusinessException.class)
+        .extracting(exception -> ((BusinessException) exception).getErrorCode())
+        .isEqualTo(ErrorCode.FILE_INVALID_CONTENT_TYPE);
+  }
+
+  @Test
+  @DisplayName("PDF 가 20MB 를 넘으면 FILE_TOO_LARGE 예외가 발생한다")
+  void createPresignedUpload_PDF20MB초과_예외발생() {
+    PresignedUploadRequest request =
+        new PresignedUploadRequest(
+            "DIARY", FileService.PDF_CONTENT_TYPE, FileService.MAX_PDF_SIZE_BYTES + 1);
+
+    assertThatThrownBy(() -> fileService.createPresignedUpload(UPLOADER_ID, request))
+        .isInstanceOf(BusinessException.class)
+        .extracting(exception -> ((BusinessException) exception).getErrorCode())
+        .isEqualTo(ErrorCode.FILE_TOO_LARGE);
+  }
+
+  @Test
+  @DisplayName("DIARY 도메인이어도 이미지는 10MB 제한을 유지한다")
+  void createPresignedUpload_다이어리이미지10MB초과_예외발생() {
+    PresignedUploadRequest request =
+        new PresignedUploadRequest("DIARY", "image/png", FileService.MAX_SIZE_BYTES + 1);
+
+    assertThatThrownBy(() -> fileService.createPresignedUpload(UPLOADER_ID, request))
+        .isInstanceOf(BusinessException.class)
+        .extracting(exception -> ((BusinessException) exception).getErrorCode())
+        .isEqualTo(ErrorCode.FILE_TOO_LARGE);
+  }
 }

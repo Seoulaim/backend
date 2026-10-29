@@ -1,6 +1,7 @@
 package com.seoulaim.domain.order.repository;
 
 import com.seoulaim.domain.order.entity.Order;
+import com.seoulaim.domain.order.entity.OrderStatus;
 import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
@@ -17,4 +18,6 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
   Optional<Order> findWithLockByIdAndUserId(UUID id, UUID userId);
 
   List<Order> findTop50ByUserIdOrderByOrderedAtDescIdDesc(UUID userId);
+
+  List<Order> findAllByUserIdAndStatusOrderByOrderedAtDescIdDesc(UUID userId, OrderStatus status);
 }
