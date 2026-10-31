@@ -30,3 +30,10 @@ jwt:
 app:
   mail:
     from: ${MAIL_FROM:}
+
+
+# 메일은 회원가입 인증에만 사용 → 메일 장애로 서버 전체가 DOWN 되지 않도록 health 검사 제외
+management:
+  health:
+    mail:
+      enabled: false
