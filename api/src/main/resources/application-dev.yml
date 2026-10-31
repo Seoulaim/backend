@@ -1,15 +1,51 @@
 spring:
-  datasource:
-    url: ${DB_URL}
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
+  application:
+    name: seoulaim-api
 
-  data:
-    redis:
-      host: ${REDIS_HOST}
-      port: ${REDIS_PORT}
+  profiles:
+    default: local
 
-jwt:
-  secret: ${JWT_SECRET}
-  access-token-expiration: ${JWT_ACCESS_TOKEN_EXPIRATION}
-  refresh-token-expiration: ${JWT_REFRESH_TOKEN_EXPIRATION}
+  jpa:
+    open-in-view: false
+
+    hibernate:
+      ddl-auto: validate
+
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+app:
+  admin:
+    # 관리자 API 임시 인증 키 (X-Admin-Key)
+    key: ${ADMIN_KEY}
+  cors:
+    # 웹 클라이언트 origin, 쉼표로 구분 (기본값: 로컬 React 개발 서버)
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
+  storage:
+    # 비어 있으면 AWS 기본 S3 엔드포인트를 쓴다
+    endpoint: ${STORAGE_ENDPOINT:}
+    region: ${AWS_REGION}
+    bucket: ${STORAGE_BUCKET}
+    # 비어 있으면 AWS 기본 자격증명 체인(AWS_ACCESS_KEY_ID 등 환경변수, IAM role)을 쓴다
+    access-key: ${STORAGE_ACCESS_KEY:}
+    secret-key: ${STORAGE_SECRET_KEY:}
+    path-style-access: false
+  order:
+    # 배송비 (원). 서울 단일 권역이라 고정
+    shipping-fee: ${ORDER_SHIPPING_FEE:3000}
+  payment:
+    toss:
+      # 토스페이먼츠 시크릿 키. 모든 프로파일에서 환경변수 필수 (기본값 없음)
+      secret-key: ${TOSS_SECRET_KEY}
+      # iOS 결제창 SDK 에 내려주는 클라이언트 키
+      client-key: ${TOSS_CLIENT_KEY:}
