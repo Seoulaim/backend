@@ -14,6 +14,7 @@ import jakarta.validation.Valid;
 import java.net.URI;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -40,18 +41,20 @@ public class PlanController {
     return planService.recommendDates(userId, request);
   }
 
+  // @ResponseStatus → Swagger 에 201 표시 (실제 상태·Location 헤더는 ResponseEntity)
   @Operation(summary = "일정 생성 (추천 알고리즘)")
   @PostMapping
+  @ResponseStatus(HttpStatus.CREATED)
   public ResponseEntity<PlanDetailResponse> createPlan(
       @CurrentUserId UUID userId, @Valid @RequestBody CreatePlanRequest request) {
     PlanDetailResponse response = planService.createPlan(userId, request);
     return ResponseEntity.created(URI.create("/api/v1/plans/" + response.id())).body(response);
   }
 
-  @Operation(summary = "내 일정 목록 조회 (최신 생성순)")
+  @Operation(summary = "내 일정 목록 조회 (최신 생성순, size 기본 20·최대 50)")
   @GetMapping
   public CursorPageResponse<PlanSummaryResponse> getPlans(
-      @CurrentUserId UUID userId, @Valid @ModelAttribute PlanListRequest request) {
+      @CurrentUserId UUID userId, @ParameterObject @Valid @ModelAttribute PlanListRequest request) {
     return planService.findPlans(userId, request.cursor(), request.sizeOrDefault());
   }
 

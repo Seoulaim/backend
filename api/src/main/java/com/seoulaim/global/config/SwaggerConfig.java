@@ -1,11 +1,13 @@
 package com.seoulaim.global.config;
 
 import com.seoulaim.global.common.AdminKeyInterceptor;
+import com.seoulaim.global.common.CurrentUserId;
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
+import org.springdoc.core.utils.SpringDocUtils;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -17,6 +19,11 @@ public class SwaggerConfig {
 
   // 전체 API 기본 인증 (Swagger UI Authorize 에 access token 입력, "Bearer " 접두사 불필요)
   public static final String BEARER_SCHEME = "BearerAuth";
+
+  // @CurrentUserId 는 토큰에서 꺼내는 값 → 요청 파라미터로 노출하지 않음
+  static {
+    SpringDocUtils.getConfig().addAnnotationsToIgnore(CurrentUserId.class);
+  }
 
   @Bean
   public OpenAPI seoulaimOpenAPI() {
