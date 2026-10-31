@@ -73,3 +73,10 @@ tasks.register('integrationTest', Test) {
 
     shouldRunAfter test
 }
+// JVM 시간대를 UTC 로 고정 → hibernate.jdbc.time_zone(UTC)과 일치, LocalTime 변환 어긋남 방지
+tasks.named('bootRun') {
+    jvmArgs '-Duser.timezone=UTC'
+}
+tasks.withType(Test).configureEach {
+    systemProperty 'user.timezone', 'UTC'
+}
