@@ -7,11 +7,11 @@ import com.seoulaim.domain.artist.dto.ArtistWithGroupResponse;
 import com.seoulaim.domain.artist.service.ArtistService;
 import com.seoulaim.global.common.CursorPageResponse;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -37,11 +37,11 @@ public class ArtistController {
     return artistService.findArtistsByGroup(groupId);
   }
 
-  @Operation(summary = "아티스트 검색 (아티스트·그룹 이름)")
+  // @ParameterObject → Swagger 에서 keyword·cursor·size 를 각각의 query 파라미터로 표시
+  @Operation(summary = "아티스트 검색 (아티스트·그룹 이름, size 기본 20·최대 50)")
   @GetMapping("/artists")
   public CursorPageResponse<ArtistWithGroupResponse> searchArtists(
-      @Parameter(description = "keyword, cursor, size(기본 20, 최대 50)") @Valid @ModelAttribute
-          ArtistSearchRequest request) {
+      @ParameterObject @Valid @ModelAttribute ArtistSearchRequest request) {
     return artistService.searchArtists(
         request.keyword(), request.cursor(), request.sizeOrDefault());
   }

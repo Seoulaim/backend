@@ -42,6 +42,12 @@ public class UserBiasService {
         .toList();
   }
 
+  public List<UUID> findMyBiasArtistIds(UUID userId) {
+    return userBiasRepository.findAllWithArtistByUserId(userId).stream()
+        .map(bias -> bias.getArtist().getId())
+        .toList();
+  }
+
   @Transactional
   public List<ArtistWithGroupResponse> replaceMyBiases(UUID userId, List<UUID> artistIds) {
     if (new HashSet<>(artistIds).size() != artistIds.size()) {
