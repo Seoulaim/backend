@@ -10,6 +10,8 @@ import com.seoulaim.domain.artist.repository.ArtistRepository;
 import com.seoulaim.global.common.CursorPageResponse;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -19,7 +21,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 그룹·아티스트 조회 (bias 선택 화면) */
+/** 그룹·아티스트 조회 (bias 선택 화면, 일정 추천) */
 @Service
 @Transactional(readOnly = true)
 @RequiredArgsConstructor
@@ -57,6 +59,15 @@ public class ArtistService {
     String nextCursor = hasNext ? page.getLast().getId().toString() : null;
 
     return new CursorPageResponse<>(toResponsesWithGroup(page), nextCursor);
+  }
+
+  // 없는 id 가 섞이면 ARTIST_NOT_FOUND
+  public List<Artist> getArtistsWithGroup(Collection<UUID> artistIds) {
+    List<Artist> artists = artistRepository.findAllWithGroupByIdIn(artistIds);
+    if (artists.size() != new HashSet<>(artistIds).size()) {
+      throw new BusinessException(ErrorCode.ARTIST_NOT_FOUND);
+    }
+    return artists;
   }
 
   // 그룹을 한 번에 조회 → 아티스트마다 그룹 조회(N+1) 방지

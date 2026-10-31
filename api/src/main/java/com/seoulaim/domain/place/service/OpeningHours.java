@@ -11,11 +11,11 @@ import java.time.LocalTime;
  *   <li>여는 시각 포함, 닫는 시각 제외
  * </ul>
  */
-final class OpeningHours {
+public final class OpeningHours {
 
   private OpeningHours() {}
 
-  static boolean isOpen(LocalTime opensAt, LocalTime closesAt, LocalTime time) {
+  public static boolean isOpen(LocalTime opensAt, LocalTime closesAt, LocalTime time) {
     if (opensAt == null || closesAt == null) {
       return false;
     }
