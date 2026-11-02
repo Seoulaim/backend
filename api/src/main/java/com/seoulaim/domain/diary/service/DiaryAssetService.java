@@ -61,12 +61,15 @@ public class DiaryAssetService {
                 request.name(),
                 request.description(),
                 linkImage(request.imageFileId()),
+                request.overlayFileId() == null ? null : linkImage(request.overlayFileId()),
+                request.aspect() == null ? DiaryTemplate.DEFAULT_ASPECT : request.aspect(),
+                request.frames() == null ? List.of() : request.frames(),
                 request.displayOrder(),
                 request.isActive() == null || request.isActive()));
     return AdminDiaryTemplateResponse.from(template);
   }
 
-  /** 이미지를 교체하면 이전 파일은 LINKED 로 남는다. */
+  /** 이미지를 교체하면 이전 파일은 LINKED 로 남는다. 레이아웃 필드는 생략하면 기존 값을 유지한다. */
   @Transactional
   public AdminDiaryTemplateResponse updateTemplate(
       UUID templateId, AdminDiaryTemplateRequest request) {
@@ -78,6 +81,11 @@ public class DiaryAssetService {
         request.name(),
         request.description(),
         linkImage(request.imageFileId()),
+        request.overlayFileId() == null
+            ? template.getOverlayImageKey()
+            : linkImage(request.overlayFileId()),
+        request.aspect() == null ? template.getAspect() : request.aspect(),
+        request.frames() == null ? template.getFrames() : request.frames(),
         request.displayOrder(),
         request.isActive() == null ? template.isActive() : request.isActive());
     return AdminDiaryTemplateResponse.from(template);

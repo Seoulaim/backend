@@ -23,10 +23,44 @@
 
 ## 1. 템플릿·스티커
 
-- `GET /api/v1/diary-templates` → `[{ id, name, description, imageKey }]`
+- `GET /api/v1/diary-templates` → `[{ id, name, description, imageKey, overlayImageKey, aspect, frames }]`
 - `GET /api/v1/diary-stickers` → `[{ id, name, imageKey }]`
 
 활성 항목만 `displayOrder` 순으로 내려온다. `imageKey` 는 S3 key 이며 CDN 도메인 조합은 앱에서 한다.
+
+### 템플릿 레이아웃 필드
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `imageKey` | string | 배경(밑그림) 이미지 S3 key. 항상 있음 |
+| `overlayImageKey` | string \| null | 사진 **위에** 덮는 이미지(테두리·장식, 투명 PNG 권장) S3 key. 없으면 null |
+| `aspect` | number | 페이지 비율 = 세로 / 가로. 기본 `1.4142857` (A4 세로, 297/210) |
+| `frames` | array | 사진이 들어갈 자리 목록. 없으면 `[]` |
+
+`frames` 원소: `{ id, x, y, width, height, rotation }`
+
+- `id`: 템플릿 안에서 프레임을 구분하는 문자열 (편집 데이터 `content` 에서 참조용)
+- `x`, `y`, `width`, `height`: 좌상단 좌표와 크기. 단위·기준은 웹앱 편집기와 어드민이 약속한 값 그대로 저장·반환하며 서버는 검증하지 않는다 (페이지 가로·세로 대비 0~1 비율 사용 권장)
+- `rotation`: 회전 각도(도, degree)
+
+렌더링 순서: 배경(`imageKey`) → 프레임 안 사진 → 오버레이(`overlayImageKey`) → 스티커·텍스트.
+
+```json
+{
+  "id": "019a4b2c-...",
+  "name": "Polaroid",
+  "description": "폴라로이드 2컷",
+  "imageKey": "diary_template/2026/11/019a4b2c-....png",
+  "overlayImageKey": "diary_template/2026/11/019a4b2d-....png",
+  "aspect": 1.4142857,
+  "frames": [
+    { "id": "photo-1", "x": 0.08, "y": 0.1, "width": 0.84, "height": 0.38, "rotation": 0 },
+    { "id": "photo-2", "x": 0.12, "y": 0.55, "width": 0.76, "height": 0.34, "rotation": -4 }
+  ]
+}
+```
+
+템플릿·스티커 이미지는 어드민이 `POST /api/v1/admin/files/presigned-upload` (`DIARY_TEMPLATE` / `DIARY_STICKER`) 로 올려 등록한다 (`docs/file-upload.md` 의 어드민 업로드).
 
 ## 2. 다이어리 상품 주문·결제
 
