@@ -12,7 +12,10 @@ public enum FileDomain {
   PROFILE,
   PRODUCT,
   DIARY,
-  INQUIRY;
+  INQUIRY,
+  // 어드민 전용 (다이어리 편집기 에셋)
+  DIARY_TEMPLATE,
+  DIARY_STICKER;
 
   public static FileDomain from(String value) {
     return Arrays.stream(values())

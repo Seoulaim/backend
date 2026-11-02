@@ -28,7 +28,7 @@ iOS                          API 서버                         S3
 
 | 필드 | 규칙 |
 |---|---|
-| `domain` | `REVIEW` / `PLAN` / `PROFILE` / `PRODUCT` / `DIARY` / `INQUIRY` |
+| `domain` | `REVIEW` / `PLAN` / `PROFILE` / `PRODUCT` / `DIARY` / `INQUIRY` (어드민 전용 `DIARY_TEMPLATE`·`DIARY_STICKER` 는 `FILE_INVALID_DOMAIN`) |
 | `contentType` | `image/jpeg`, `image/png`, `image/webp`, `image/heic`. `domain` 이 `DIARY` 일 때만 `application/pdf` 추가 허용 |
 | `sizeBytes` | 실제 업로드할 Blob/File 의 byte 길이와 **정확히 같아야** 한다. 이미지 최대 10MB (10,485,760), PDF 최대 20MB (20,971,520) |
 
@@ -102,6 +102,39 @@ public ReviewResponse create(UUID userId, ReviewCreateRequest request) {
 - 도메인 엔티티에는 `fileId` 가 아니라 `s3Key` 를 `*_image_key` 컬럼에 저장한다 (전역 규칙). 필요하면 `fileService.getById(fileId).s3Key()` 로 조회한다.
 - `markLinked` 는 이미 LINKED 인 파일을 그대로 둔다 (재시도 안전).
 - 같은 트랜잭션 안에서 호출해야 도메인 저장이 실패했을 때 LINKED 도 함께 롤백된다.
+
+## 어드민 업로드
+
+어드민 프론트가 상품 이미지·다이어리 템플릿·스티커를 올릴 때 쓴다. access token 대신 `X-Admin-Key` 로 인증한다.
+
+`POST /api/v1/admin/files/presigned-upload`
+
+헤더: `X-Admin-Key: <app.admin.key>`
+
+요청·응답 DTO 는 회원용 `/api/v1/files/presigned-upload` 와 같다. 이후 S3 PUT 규칙(2단계)도 동일하다.
+
+```json
+{ "domain": "DIARY_TEMPLATE", "contentType": "image/png", "sizeBytes": 812345 }
+```
+
+```json
+{
+  "fileId": "019a4b2c-...",
+  "s3Key": "diary_template/2026/11/019a4b2c-....png",
+  "uploadUrl": "https://<bucket>.s3.ap-northeast-2.amazonaws.com/diary_template/...?X-Amz-...",
+  "expiresAt": "2026-11-03T03:10:00Z"
+}
+```
+
+| domain | 허용 contentType | 최대 크기 | s3 key |
+|---|---|---|---|
+| `DIARY_TEMPLATE` | `image/jpeg`, `image/png`, `image/webp` | 10MB | `diary_template/yyyy/MM/{uuid}.{ext}` |
+| `DIARY_STICKER` | `image/jpeg`, `image/png`, `image/webp` | 10MB | `diary_sticker/yyyy/MM/{uuid}.{ext}` |
+| `PRODUCT` | 회원용과 동일 (`image/heic` 포함) | 10MB | `product/yyyy/MM/{uuid}.{ext}` |
+
+- 그 외 domain 은 400 `FILE_INVALID_DOMAIN`. 키가 없거나 틀리면 403 `AUTH_ACCESS_DENIED`
+- `files.uploader_id` 는 null 로 저장된다
+- 발급받은 `fileId` 를 어드민 상품/템플릿/스티커 등록 API 의 `*FileId` 로 넘기면 LINKED 로 바뀐다. 48시간 안에 연결하지 않으면 정리 배치가 지운다
 
 ## 디버깅
 

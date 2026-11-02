@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +52,14 @@ public class FileService {
           "image/webp", "webp",
           "image/heic", "heic");
   private static final String PDF_EXTENSION = "pdf";
+  private static final String HEIC_CONTENT_TYPE = "image/heic";
+
+  // 어드민만 올릴 수 있는 도메인. jpeg/png/webp 만 허용한다 (heic 제외)
+  private static final Set<FileDomain> ADMIN_ONLY_DOMAINS =
+      EnumSet.of(FileDomain.DIARY_TEMPLATE, FileDomain.DIARY_STICKER);
+  // 어드민 업로드 API 가 받는 도메인
+  private static final Set<FileDomain> ADMIN_UPLOAD_DOMAINS =
+      EnumSet.of(FileDomain.DIARY_TEMPLATE, FileDomain.DIARY_STICKER, FileDomain.PRODUCT);
   private static final DateTimeFormatter KEY_MONTH_FORMAT =
       DateTimeFormatter.ofPattern("yyyy/MM").withZone(ZoneOffset.UTC);
 
@@ -58,12 +67,32 @@ public class FileService {
   private final FileStorage fileStorage;
   private final Clock clock;
 
+  /** 회원 업로드. 어드민 전용 도메인(DIARY_TEMPLATE, DIARY_STICKER)은 FILE_INVALID_DOMAIN. */
   @Transactional
   public PresignedUploadResponse createPresignedUpload(
       UUID uploaderId, PresignedUploadRequest request) {
     FileDomain domain = FileDomain.from(request.domain());
+    if (ADMIN_ONLY_DOMAINS.contains(domain)) {
+      throw new BusinessException(ErrorCode.FILE_INVALID_DOMAIN);
+    }
+    return issuePresignedUpload(uploaderId, domain, request);
+  }
+
+  /** 어드민 업로드. DIARY_TEMPLATE, DIARY_STICKER, PRODUCT 만 허용하고 uploaderId 는 null 로 저장한다. */
+  @Transactional
+  public PresignedUploadResponse createAdminPresignedUpload(PresignedUploadRequest request) {
+    FileDomain domain = FileDomain.from(request.domain());
+    if (!ADMIN_UPLOAD_DOMAINS.contains(domain)) {
+      throw new BusinessException(ErrorCode.FILE_INVALID_DOMAIN);
+    }
+    return issuePresignedUpload(null, domain, request);
+  }
+
+  // uploaderId 는 어드민 업로드면 null
+  private PresignedUploadResponse issuePresignedUpload(
+      UUID uploaderId, FileDomain domain, PresignedUploadRequest request) {
     boolean pdf = isDiaryPdf(domain, request.contentType());
-    String extension = pdf ? PDF_EXTENSION : EXTENSIONS.get(request.contentType());
+    String extension = pdf ? PDF_EXTENSION : imageExtension(domain, request.contentType());
     if (extension == null) {
       throw new BusinessException(ErrorCode.FILE_INVALID_CONTENT_TYPE);
     }
@@ -152,6 +181,14 @@ public class FileService {
   // PDF 는 다이어리 제출용으로만 받는다
   private static boolean isDiaryPdf(FileDomain domain, String contentType) {
     return domain == FileDomain.DIARY && PDF_CONTENT_TYPE.equals(contentType);
+  }
+
+  // 허용되지 않는 이미지 형식이면 null
+  private static String imageExtension(FileDomain domain, String contentType) {
+    if (ADMIN_ONLY_DOMAINS.contains(domain) && HEIC_CONTENT_TYPE.equals(contentType)) {
+      return null;
+    }
+    return EXTENSIONS.get(contentType);
   }
 
   private String generateKey(FileDomain domain, Instant now, String extension) {
