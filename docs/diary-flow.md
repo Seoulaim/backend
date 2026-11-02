@@ -62,6 +62,25 @@
 
 템플릿·스티커 이미지는 어드민이 `POST /api/v1/admin/files/presigned-upload` (`DIARY_TEMPLATE` / `DIARY_STICKER`) 로 올려 등록한다 (`docs/file-upload.md` 의 어드민 업로드).
 
+### 어드민 등록·수정 (`X-Admin-Key`)
+
+- `POST /api/v1/admin/diary-templates` `{ name, description?, imageFileId, displayOrder, isActive?, overlayFileId?, aspect?, frames? }` → 201
+- `PUT /api/v1/admin/diary-templates/{id}` 같은 바디 → 200
+- `POST /api/v1/admin/diary-stickers` `{ name?, imageFileId, displayOrder, isActive? }` → 201
+- `PUT /api/v1/admin/diary-stickers/{id}` 같은 바디 → 200
+
+| 필드 | 생성(POST) 에서 생략 | 수정(PUT) 에서 생략 |
+|---|---|---|
+| `imageFileId` | 400 `COMMON_INVALID_REQUEST` (`fields.imageFileId`) | 기존 `imageKey` 유지 |
+| `overlayFileId` | 오버레이 없음 | 기존 값 유지 |
+| `aspect` | `1.4142857` | 기존 값 유지 |
+| `frames` | `[]` | 기존 값 유지 (보내면 전체 교체) |
+| `isActive` | `true` | 기존 값 유지 |
+
+- `name`(템플릿 필수), `displayOrder`(필수), `description` 은 PUT 에서도 매번 보낸 값으로 덮어쓴다
+- `*FileId` 를 보내면 해당 파일을 LINKED 로 바꾸고 s3 key 를 저장한다. 없는 fileId 면 404 `FILE_NOT_FOUND`
+- 없는 템플릿·스티커를 수정하면 404 `DIARY_TEMPLATE_NOT_FOUND` / `DIARY_STICKER_NOT_FOUND`
+
 ## 2. 다이어리 상품 주문·결제
 
 `isDiary=true` 상품을 일반 상품과 같은 방법으로 주문·결제한다. 다이어리 상품은 수량 1 만 가능하다. 자세한 순서는 `docs/payment-flow.md`.

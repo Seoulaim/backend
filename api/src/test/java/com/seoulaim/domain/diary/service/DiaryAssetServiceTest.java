@@ -1,12 +1,18 @@
 package com.seoulaim.domain.diary.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
+import com.seoulaim.domain.diary.admin.dto.AdminDiaryStickerRequest;
+import com.seoulaim.domain.diary.admin.dto.AdminDiaryStickerResponse;
 import com.seoulaim.domain.diary.admin.dto.AdminDiaryTemplateRequest;
 import com.seoulaim.domain.diary.admin.dto.AdminDiaryTemplateResponse;
+import com.seoulaim.domain.diary.entity.DiarySticker;
 import com.seoulaim.domain.diary.entity.DiaryTemplate;
 import com.seoulaim.domain.diary.entity.TemplateFrame;
 import com.seoulaim.domain.diary.repository.DiaryStickerRepository;
@@ -14,6 +20,8 @@ import com.seoulaim.domain.diary.repository.DiaryTemplateRepository;
 import com.seoulaim.domain.file.dto.FileResponse;
 import com.seoulaim.domain.file.entity.FileStatus;
 import com.seoulaim.domain.file.service.FileService;
+import com.seoulaim.global.exception.BusinessException;
+import com.seoulaim.global.exception.ErrorCode;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -124,5 +132,107 @@ class DiaryAssetServiceTest {
             template.getId(), templateRequest(IMAGE_FILE_ID, null, null, replaced));
 
     assertThat(response.frames()).isEqualTo(replaced);
+  }
+
+  @Test
+  @DisplayName("imageFileId 없이 템플릿을 만들면 COMMON_INVALID_REQUEST(fields: imageFileId) 예외가 발생한다")
+  void createTemplate_이미지없음_예외발생() {
+    AdminDiaryTemplateRequest request = templateRequest(null, null, null, null);
+
+    assertThatThrownBy(() -> diaryAssetService.createTemplate(request))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            exception -> {
+              assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.COMMON_INVALID_REQUEST);
+              assertThat(exception.getFields()).containsKey("imageFileId");
+            });
+    verify(diaryTemplateRepository, never()).save(any());
+  }
+
+  @Test
+  @DisplayName("imageFileId 없이 스티커를 만들면 COMMON_INVALID_REQUEST(fields: imageFileId) 예외가 발생한다")
+  void createSticker_이미지없음_예외발생() {
+    AdminDiaryStickerRequest request = new AdminDiaryStickerRequest("heart", null, 0, null);
+
+    assertThatThrownBy(() -> diaryAssetService.createSticker(request))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            exception -> {
+              assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.COMMON_INVALID_REQUEST);
+              assertThat(exception.getFields()).containsKey("imageFileId");
+            });
+    verify(diaryStickerRepository, never()).save(any());
+  }
+
+  @Test
+  @DisplayName("템플릿 수정 시 imageFileId 를 생략하면 기존 imageKey 를 유지하고 파일을 건드리지 않는다")
+  void updateTemplate_이미지생략_기존key유지() {
+    DiaryTemplate template = DiaryTemplate.create("Old", null, "old.png", 0, false);
+    given(diaryTemplateRepository.findById(template.getId())).willReturn(Optional.of(template));
+
+    AdminDiaryTemplateResponse response =
+        diaryAssetService.updateTemplate(template.getId(), templateRequest(null, null, null, null));
+
+    assertThat(response.imageKey()).isEqualTo("old.png");
+    assertThat(response.name()).isEqualTo("Basic");
+    assertThat(response.isActive()).isFalse();
+    verifyNoInteractions(fileService);
+  }
+
+  @Test
+  @DisplayName("스티커 수정 시 imageFileId 를 생략하면 기존 imageKey 를 유지하고 파일을 건드리지 않는다")
+  void updateSticker_이미지생략_기존key유지() {
+    DiarySticker sticker = DiarySticker.create("old", "sticker/old.png", 0, true);
+    given(diaryStickerRepository.findById(sticker.getId())).willReturn(Optional.of(sticker));
+
+    AdminDiaryStickerResponse response =
+        diaryAssetService.updateSticker(
+            sticker.getId(), new AdminDiaryStickerRequest("new", null, 3, null));
+
+    assertThat(response.imageKey()).isEqualTo("sticker/old.png");
+    assertThat(response.name()).isEqualTo("new");
+    assertThat(response.displayOrder()).isEqualTo(3);
+    verifyNoInteractions(fileService);
+  }
+
+  @Test
+  @DisplayName("스티커 수정 시 imageFileId 를 보내면 LINKED 로 바꾸고 key 를 교체한다")
+  void updateSticker_이미지지정_key교체() {
+    DiarySticker sticker = DiarySticker.create("old", "sticker/old.png", 0, true);
+    given(diaryStickerRepository.findById(sticker.getId())).willReturn(Optional.of(sticker));
+    givenFile(IMAGE_FILE_ID, "diary_sticker/2026/11/new.png");
+
+    AdminDiaryStickerResponse response =
+        diaryAssetService.updateSticker(
+            sticker.getId(), new AdminDiaryStickerRequest("new", IMAGE_FILE_ID, 0, null));
+
+    assertThat(response.imageKey()).isEqualTo("diary_sticker/2026/11/new.png");
+    verify(fileService).markLinked(List.of(IMAGE_FILE_ID));
+  }
+
+  @Test
+  @DisplayName("없는 템플릿을 수정하면 DIARY_TEMPLATE_NOT_FOUND 예외가 발생한다")
+  void updateTemplate_없는템플릿_예외발생() {
+    UUID templateId = UUID.randomUUID();
+    given(diaryTemplateRepository.findById(templateId)).willReturn(Optional.empty());
+    AdminDiaryTemplateRequest request = templateRequest(null, null, null, null);
+
+    assertThatThrownBy(() -> diaryAssetService.updateTemplate(templateId, request))
+        .isInstanceOf(BusinessException.class)
+        .extracting(exception -> ((BusinessException) exception).getErrorCode())
+        .isEqualTo(ErrorCode.DIARY_TEMPLATE_NOT_FOUND);
+  }
+
+  @Test
+  @DisplayName("없는 스티커를 수정하면 DIARY_STICKER_NOT_FOUND 예외가 발생한다")
+  void updateSticker_없는스티커_예외발생() {
+    UUID stickerId = UUID.randomUUID();
+    given(diaryStickerRepository.findById(stickerId)).willReturn(Optional.empty());
+    AdminDiaryStickerRequest request = new AdminDiaryStickerRequest(null, null, 0, null);
+
+    assertThatThrownBy(() -> diaryAssetService.updateSticker(stickerId, request))
+        .isInstanceOf(BusinessException.class)
+        .extracting(exception -> ((BusinessException) exception).getErrorCode())
+        .isEqualTo(ErrorCode.DIARY_STICKER_NOT_FOUND);
   }
 }

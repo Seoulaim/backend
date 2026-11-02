@@ -14,6 +14,7 @@ import com.seoulaim.domain.file.service.FileService;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -60,7 +61,7 @@ public class DiaryAssetService {
             DiaryTemplate.create(
                 request.name(),
                 request.description(),
-                linkImage(request.imageFileId()),
+                linkRequiredImage(request.imageFileId()),
                 request.overlayFileId() == null ? null : linkImage(request.overlayFileId()),
                 request.aspect() == null ? DiaryTemplate.DEFAULT_ASPECT : request.aspect(),
                 request.frames() == null ? List.of() : request.frames(),
@@ -69,18 +70,18 @@ public class DiaryAssetService {
     return AdminDiaryTemplateResponse.from(template);
   }
 
-  /** 이미지를 교체하면 이전 파일은 LINKED 로 남는다. 레이아웃 필드는 생략하면 기존 값을 유지한다. */
+  /** 이미지를 교체하면 이전 파일은 LINKED 로 남는다. imageFileId·레이아웃 필드는 생략하면 기존 값을 유지한다. */
   @Transactional
   public AdminDiaryTemplateResponse updateTemplate(
       UUID templateId, AdminDiaryTemplateRequest request) {
     DiaryTemplate template =
         diaryTemplateRepository
             .findById(templateId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.DIARY_NOT_FOUND));
+            .orElseThrow(() -> new BusinessException(ErrorCode.DIARY_TEMPLATE_NOT_FOUND));
     template.update(
         request.name(),
         request.description(),
-        linkImage(request.imageFileId()),
+        request.imageFileId() == null ? template.getImageKey() : linkImage(request.imageFileId()),
         request.overlayFileId() == null
             ? template.getOverlayImageKey()
             : linkImage(request.overlayFileId()),
@@ -97,24 +98,34 @@ public class DiaryAssetService {
         diaryStickerRepository.save(
             DiarySticker.create(
                 request.name(),
-                linkImage(request.imageFileId()),
+                linkRequiredImage(request.imageFileId()),
                 request.displayOrder(),
                 request.isActive() == null || request.isActive()));
     return AdminDiaryStickerResponse.from(sticker);
   }
 
+  /** imageFileId 를 생략하면 기존 이미지를 유지한다. */
   @Transactional
   public AdminDiaryStickerResponse updateSticker(UUID stickerId, AdminDiaryStickerRequest request) {
     DiarySticker sticker =
         diaryStickerRepository
             .findById(stickerId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.DIARY_NOT_FOUND));
+            .orElseThrow(() -> new BusinessException(ErrorCode.DIARY_STICKER_NOT_FOUND));
     sticker.update(
         request.name(),
-        linkImage(request.imageFileId()),
+        request.imageFileId() == null ? sticker.getImageKey() : linkImage(request.imageFileId()),
         request.displayOrder(),
         request.isActive() == null ? sticker.isActive() : request.isActive());
     return AdminDiaryStickerResponse.from(sticker);
+  }
+
+  // 생성 시 imageFileId 는 필수. 수정에선 선택이라 DTO 가 아니라 여기서 검증한다
+  private String linkRequiredImage(UUID fileId) {
+    if (fileId == null) {
+      throw new BusinessException(
+          ErrorCode.COMMON_INVALID_REQUEST, Map.of("imageFileId", "생성 시 필수입니다"));
+    }
+    return linkImage(fileId);
   }
 
   // 업로드된 파일을 LINKED 로 바꾸고 s3 key 를 꺼낸다. 없는 fileId 면 FILE_NOT_FOUND

@@ -13,6 +13,7 @@ import java.util.UUID;
  * 템플릿 생성·수정 공용.
  *
  * <ul>
+ *   <li>imageFileId 생략: 생성은 400 COMMON_INVALID_REQUEST, 수정은 기존 이미지 유지
  *   <li>isActive 생략: 생성은 true, 수정은 기존 값 유지
  *   <li>overlayFileId 생략: 생성은 오버레이 없음, 수정은 기존 값 유지
  *   <li>aspect 생략: 생성은 기본값(297/210), 수정은 기존 값 유지
@@ -22,7 +23,7 @@ import java.util.UUID;
 public record AdminDiaryTemplateRequest(
     @NotBlank @Size(max = 100) String name,
     @Size(max = 500) String description,
-    @NotNull UUID imageFileId,
+    UUID imageFileId,
     @NotNull Integer displayOrder,
     Boolean isActive,
     UUID overlayFileId,
