@@ -49,4 +49,21 @@ class FileSchemaIntegrationTest {
     assertThat(found.getId().version()).isEqualTo(7);
     assertThat(found.getCreatedAt()).isNotNull();
   }
+
+  @Test
+  @DisplayName("어드민 전용 도메인 파일을 uploaderId 없이 저장할 수 있다")
+  void saveAndFlush_whenAdminDomain_passesDomainCheck() {
+    File template =
+        fileRepository.saveAndFlush(
+            File.createPending(
+                null, FileDomain.DIARY_TEMPLATE, "diary_template/2026/11/t.png", "image/png", 10L));
+    File sticker =
+        fileRepository.saveAndFlush(
+            File.createPending(
+                null, FileDomain.DIARY_STICKER, "diary_sticker/2026/11/s.png", "image/png", 10L));
+
+    assertThat(fileRepository.findById(template.getId()).orElseThrow().getUploaderId()).isNull();
+    assertThat(fileRepository.findById(sticker.getId()).orElseThrow().getDomain())
+        .isEqualTo(FileDomain.DIARY_STICKER);
+  }
 }

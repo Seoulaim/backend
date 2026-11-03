@@ -87,6 +87,8 @@ public enum ErrorCode {
   DIARY_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "DIARY_ALREADY_SUBMITTED", "이미 제출된 다이어리입니다"),
   DIARY_INVALID_PDF(HttpStatus.BAD_REQUEST, "DIARY_INVALID_PDF", "다이어리 PDF 파일이 올바르지 않습니다"),
   DIARY_CONTENT_TOO_LARGE(HttpStatus.BAD_REQUEST, "DIARY_CONTENT_TOO_LARGE", "다이어리 편집 데이터가 너무 큽니다"),
+  DIARY_TEMPLATE_NOT_FOUND(HttpStatus.NOT_FOUND, "DIARY_TEMPLATE_NOT_FOUND", "다이어리 템플릿을 찾을 수 없습니다"),
+  DIARY_STICKER_NOT_FOUND(HttpStatus.NOT_FOUND, "DIARY_STICKER_NOT_FOUND", "다이어리 스티커를 찾을 수 없습니다"),
   ;
 
   private final HttpStatus status;

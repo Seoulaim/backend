@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.seoulaim.domain.diary.entity.Diary;
 import com.seoulaim.domain.diary.entity.DiarySticker;
 import com.seoulaim.domain.diary.entity.DiaryTemplate;
+import com.seoulaim.domain.diary.entity.TemplateFrame;
 import com.seoulaim.domain.diary.repository.DiaryRepository;
 import com.seoulaim.domain.diary.repository.DiaryStickerRepository;
 import com.seoulaim.domain.diary.repository.DiaryTemplateRepository;
@@ -32,6 +33,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -55,6 +57,7 @@ class DiarySchemaIntegrationTest {
   @Autowired private DiaryRepository diaryRepository;
   @Autowired private DiaryTemplateRepository diaryTemplateRepository;
   @Autowired private DiaryStickerRepository diaryStickerRepository;
+  @Autowired private JdbcTemplate jdbcTemplate;
 
   @Test
   @DisplayName("diary 스키마가 적용된 상태에서 jsonb 편집 데이터를 저장하고 그대로 조회된다")
@@ -126,6 +129,55 @@ class DiarySchemaIntegrationTest {
     assertThat(diaryStickerRepository.findAllByIsActiveTrueOrderByDisplayOrderAscIdAsc())
         .extracting(DiarySticker::getImageKey)
         .containsExactly("diary/s1.png");
+  }
+
+  @Test
+  @DisplayName("템플릿 frames 를 jsonb 로 저장하고 그대로 조회되며, 레이아웃 없이 만들면 기본값이 들어간다")
+  void save_whenTemplateHasFrames_framesRoundTrip() {
+    List<TemplateFrame> frames =
+        List.of(
+            new TemplateFrame("photo-1", 0.08, 0.12, 0.84, 0.4, 0),
+            new TemplateFrame("photo-2", 0.1, 0.6, 0.35, 0.25, -7.5));
+    DiaryTemplate withLayout =
+        diaryTemplateRepository.saveAndFlush(
+            DiaryTemplate.create(
+                "Layout",
+                null,
+                "diary_template/2026/11/bg.png",
+                "diary_template/2026/11/overlay.png",
+                0.75,
+                frames,
+                0,
+                true));
+    DiaryTemplate plain =
+        diaryTemplateRepository.saveAndFlush(
+            DiaryTemplate.create("Plain", null, "diary_template/2026/11/p.png", 1, true));
+
+    DiaryTemplate found = diaryTemplateRepository.findById(withLayout.getId()).orElseThrow();
+    assertThat(found.getFrames()).isEqualTo(frames);
+    assertThat(found.getOverlayImageKey()).isEqualTo("diary_template/2026/11/overlay.png");
+    assertThat(found.getAspect()).isEqualTo(0.75);
+
+    DiaryTemplate foundPlain = diaryTemplateRepository.findById(plain.getId()).orElseThrow();
+    assertThat(foundPlain.getFrames()).isEmpty();
+    assertThat(foundPlain.getOverlayImageKey()).isNull();
+    assertThat(foundPlain.getAspect()).isEqualTo(DiaryTemplate.DEFAULT_ASPECT);
+  }
+
+  @Test
+  @DisplayName("레이아웃 컬럼 없이 insert 된 기존 템플릿은 DB 기본값(1.4142857, 빈 배열)으로 조회된다")
+  void findById_whenInsertedWithoutLayout_usesColumnDefaults() {
+    UUID id = UUID.randomUUID();
+    jdbcTemplate.update(
+        "INSERT INTO diary_templates (id, name, image_key, created_at, updated_at)"
+            + " VALUES (?, 'Legacy', 'diary/legacy.png', now(), now())",
+        id);
+
+    DiaryTemplate found = diaryTemplateRepository.findById(id).orElseThrow();
+
+    assertThat(found.getAspect()).isEqualTo(DiaryTemplate.DEFAULT_ASPECT);
+    assertThat(found.getFrames()).isEmpty();
+    assertThat(found.getOverlayImageKey()).isNull();
   }
 
   private OrderItem saveDiaryOrderItem(UUID userId) {

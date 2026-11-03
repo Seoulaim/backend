@@ -30,6 +30,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -214,5 +217,88 @@ class FileServiceTest {
         .isInstanceOf(BusinessException.class)
         .extracting(exception -> ((BusinessException) exception).getErrorCode())
         .isEqualTo(ErrorCode.FILE_TOO_LARGE);
+  }
+
+  @Test
+  @DisplayName("어드민 업로드로 DIARY_TEMPLATE 이미지를 올리면 uploaderId 없이 diary_template/yyyy/MM 로 key 를 만든다")
+  void createAdminPresignedUpload_템플릿도메인_업로더없이key생성() throws Exception {
+    given(fileRepository.save(any(File.class))).willAnswer(invocation -> invocation.getArgument(0));
+    given(fileStorage.presignPut(anyString(), anyString(), anyLong(), any()))
+        .willReturn(URI.create("https://example.com/signed").toURL());
+
+    PresignedUploadResponse response =
+        fileService.createAdminPresignedUpload(
+            new PresignedUploadRequest("DIARY_TEMPLATE", "image/png", 2048L));
+
+    assertThat(response.s3Key()).matches("diary_template/2026/10/[0-9a-f-]{36}\\.png");
+    ArgumentCaptor<File> saved = ArgumentCaptor.forClass(File.class);
+    verify(fileRepository).save(saved.capture());
+    assertThat(saved.getValue().getUploaderId()).isNull();
+    assertThat(saved.getValue().getDomain()).isEqualTo(FileDomain.DIARY_TEMPLATE);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"DIARY_STICKER", "PRODUCT"})
+  @DisplayName("어드민 업로드는 DIARY_STICKER, PRODUCT 도메인도 허용한다")
+  void createAdminPresignedUpload_허용도메인_발급(String domain) throws Exception {
+    given(fileRepository.save(any(File.class))).willAnswer(invocation -> invocation.getArgument(0));
+    given(fileStorage.presignPut(anyString(), anyString(), anyLong(), any()))
+        .willReturn(URI.create("https://example.com/signed").toURL());
+
+    PresignedUploadResponse response =
+        fileService.createAdminPresignedUpload(
+            new PresignedUploadRequest(domain, "image/webp", 1024L));
+
+    assertThat(response.s3Key()).startsWith(domain.toLowerCase() + "/2026/10/").endsWith(".webp");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"REVIEW", "DIARY", "PROFILE", "UNKNOWN"})
+  @DisplayName("어드민 업로드에 허용되지 않은 domain 이면 FILE_INVALID_DOMAIN 예외가 발생한다")
+  void createAdminPresignedUpload_비허용도메인_예외발생(String domain) {
+    PresignedUploadRequest request = new PresignedUploadRequest(domain, "image/png", 1024L);
+
+    assertThatThrownBy(() -> fileService.createAdminPresignedUpload(request))
+        .isInstanceOf(BusinessException.class)
+        .extracting(exception -> ((BusinessException) exception).getErrorCode())
+        .isEqualTo(ErrorCode.FILE_INVALID_DOMAIN);
+    verify(fileRepository, never()).save(any());
+  }
+
+  @Test
+  @DisplayName("DIARY_STICKER 에 heic 를 올리면 FILE_INVALID_CONTENT_TYPE 예외가 발생한다")
+  void createAdminPresignedUpload_스티커heic_예외발생() {
+    PresignedUploadRequest request =
+        new PresignedUploadRequest("DIARY_STICKER", "image/heic", 1024L);
+
+    assertThatThrownBy(() -> fileService.createAdminPresignedUpload(request))
+        .isInstanceOf(BusinessException.class)
+        .extracting(exception -> ((BusinessException) exception).getErrorCode())
+        .isEqualTo(ErrorCode.FILE_INVALID_CONTENT_TYPE);
+  }
+
+  @Test
+  @DisplayName("DIARY_TEMPLATE 이미지가 10MB 를 넘으면 FILE_TOO_LARGE 예외가 발생한다")
+  void createAdminPresignedUpload_템플릿10MB초과_예외발생() {
+    PresignedUploadRequest request =
+        new PresignedUploadRequest("DIARY_TEMPLATE", "image/jpeg", FileService.MAX_SIZE_BYTES + 1);
+
+    assertThatThrownBy(() -> fileService.createAdminPresignedUpload(request))
+        .isInstanceOf(BusinessException.class)
+        .extracting(exception -> ((BusinessException) exception).getErrorCode())
+        .isEqualTo(ErrorCode.FILE_TOO_LARGE);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"DIARY_TEMPLATE", "DIARY_STICKER"})
+  @DisplayName("회원 업로드로 어드민 전용 domain 을 요청하면 FILE_INVALID_DOMAIN 예외가 발생한다")
+  void createPresignedUpload_어드민전용도메인_예외발생(String domain) {
+    PresignedUploadRequest request = new PresignedUploadRequest(domain, "image/png", 1024L);
+
+    assertThatThrownBy(() -> fileService.createPresignedUpload(UPLOADER_ID, request))
+        .isInstanceOf(BusinessException.class)
+        .extracting(exception -> ((BusinessException) exception).getErrorCode())
+        .isEqualTo(ErrorCode.FILE_INVALID_DOMAIN);
+    verify(fileRepository, never()).save(any());
   }
 }
