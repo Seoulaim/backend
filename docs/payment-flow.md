@@ -102,3 +102,123 @@ iOS                                API 서버                          토스
 
 - `GET /api/v1/orders` — 내 주문 최신순 최대 50개 `[{ orderId, orderNumber, status, finalAmount, orderedAt, itemCount, firstProductName }]` (`itemCount` 는 상품 종류 수)
 - `GET /api/v1/orders/{orderId}` — 상세 (상품 스냅샷, 배송지 `shipping`, `paymentStatus`)
+
+---
+
+# 다이어리 결제 (웹앱)
+
+다이어리는 주문(`/orders`)을 만들지 않고 **다이어리 단위로 결제**한다 (`docs/diary-flow.md`). 토스 승인 방식과 실패 처리 원칙은 위 상품 결제와 같다.
+
+## 흐름
+
+```
+웹앱                                         API 서버                              토스
+ │ 1. GET /api/v1/diaries/{id}/checkout ──────▶ 결제 화면 정보
+ │ 2. POST /api/v1/diaries/{id}/payments ─────▶ diary_payments PENDING 생성 (기존 PENDING 은 FAILED)
+ │ ◀──── { orderId, orderNumber, finalAmount, orderName, tossClientKey }
+ │ 3. 토스 결제창 SDK 호출 ─────────────────────────────────────────────────────▶ 인증
+ │ ◀──────────────────── 성공 콜백 { paymentKey, orderId(=orderNumber), amount }
+ │ 4. POST /api/v1/payments/{orderId}/confirm ─▶ 승인 API 호출 ──────────────────▶ 승인
+ │ ◀──── 200 { diaryId }  또는  402 PAYMENT_FAILED
+```
+
+## 1. 결제 화면
+
+`GET /api/v1/diaries/{diaryId}/checkout`
+
+```json
+{
+  "item": { "diaryId": "019a4c10-...", "name": "My Diary", "thumbnailKey": null, "price": 3000 },
+  "coupons": [],
+  "paymentMethods": [{ "id": "TOSS", "name": "Card" }]
+}
+```
+
+- 쿠폰은 미구현이라 항상 `[]`
+- 이미 결제된 다이어리면 409 `PAYMENT_ALREADY_PAID`
+
+## 2. 결제 생성
+
+`POST /api/v1/diaries/{diaryId}/payments`
+
+```json
+{ "couponId": null, "refundConsent": true }
+```
+
+응답 201
+
+```json
+{
+  "orderId": "019a4c30-...",
+  "orderNumber": "DIA-20261103-K3M9Q2X7PA",
+  "finalAmount": 3000,
+  "orderName": "Seoulaim Diary",
+  "tossClientKey": "test_ck_..."
+}
+```
+
+| 오류 코드 | 상태 | 조건 |
+|---|---|---|
+| `PAYMENT_CONSENT_REQUIRED` | 400 | `refundConsent` 가 `true` 가 아님 (동의 시각을 `refund_consent_at` 에 저장) |
+| `PAYMENT_ALREADY_PAID` | 409 | 이미 결제된 다이어리 |
+| `DIARY_NOT_FOUND` | 404 | 없음·남의 것·삭제됨 |
+
+- `couponId` 는 받기만 하고 무시한다
+- 같은 다이어리에 결제를 다시 만들면 이전 `PENDING` 결제는 `FAILED`(`failure_code=SUPERSEDED`) 로 바뀐다. 이전 결제로는 승인할 수 없다
+
+## 3. 토스 결제창 호출
+
+| SDK 파라미터 | 값 |
+|---|---|
+| clientKey | `tossClientKey` |
+| orderId | **`orderNumber`** (UUID `orderId` 가 아님) |
+| amount | `finalAmount` |
+| orderName | `orderName` (`Seoulaim Diary`) |
+
+## 4. 결제 승인
+
+경로의 `{orderId}` 는 2단계 응답의 UUID `orderId` 다.
+
+`POST /api/v1/payments/{orderId}/confirm`
+
+```json
+{ "paymentKey": "tgen_20261103...", "amount": 3000 }
+```
+
+| 응답 | 의미 | 웹앱 처리 |
+|---|---|---|
+| 200 `{ diaryId }` | 결제 완료. 다이어리 `paid=true` | 편집 화면으로 |
+| 400 `PAYMENT_AMOUNT_MISMATCH` | 콜백 금액 ≠ 결제 금액. 승인하지 않았다 | 2단계부터 다시 |
+| 402 `PAYMENT_FAILED` | 토스 승인 거절(`fields.code`, `fields.message`) 또는 이미 실패·대체된 결제 | 메시지 노출 후 2단계부터 다시 |
+| 404 `ORDER_NOT_FOUND` | 없는 결제 또는 남의 결제 | - |
+| 502 `PAYMENT_GATEWAY_ERROR` | 토스 통신 실패. 승인 여부 불확실 | 같은 요청으로 재시도 |
+
+승인 요청은 **멱등**하다. 이미 `PAID` 인 결제에 다시 보내면 토스 호출 없이 200 을 돌려준다.
+
+## 5. 결제 내역
+
+`GET /api/v1/me/payments` — `PAID`·`REFUNDED` 결제, `paidAt` 최신순
+
+```json
+[
+  {
+    "id": "019a4c30-...",
+    "diaryId": "019a4c10-...",
+    "name": "My Diary",
+    "thumbnailKey": null,
+    "amount": 3000,
+    "status": "PAID",
+    "paidAt": "2026-11-03T03:05:00Z",
+    "refundable": true,
+    "withinPolicy": false
+  }
+]
+```
+
+| 필드 | 의미 |
+|---|---|
+| `name`, `thumbnailKey` | 다이어리가 삭제됐으면 `null` |
+| `refundable` | `PAID` 이고 결제 후 7일 이내이며 다이어리가 아직 완성(FINALIZED) 전 |
+| `withinPolicy` | `refundable` 이고 결제 후 편집 이력(`POST /diaries/{id}/edited`)이 없음 |
+
+환불 API 는 아직 없다 (`REFUNDED` 는 운영에서 수동 처리용).

@@ -126,6 +126,16 @@ public class FileService {
     return fileRepository.findById(fileId).map(FileDetail::from);
   }
 
+  /** {@link #findDetail} 의 여러 건 버전. 없는 id 는 결과에서 빠진다. */
+  public List<FileDetail> findDetails(Collection<UUID> fileIds) {
+    if (fileIds.isEmpty()) {
+      return List.of();
+    }
+    return fileRepository.findAllById(new HashSet<>(fileIds)).stream()
+        .map(FileDetail::from)
+        .toList();
+  }
+
   /** 첨부 파일로 내려받는 presigned GET URL 을 발급한다. 객체 존재 여부는 확인하지 않는다. */
   public PresignedDownloadResponse createPresignedDownload(String s3Key, String filename) {
     URL downloadUrl = fileStorage.presignGet(s3Key, filename, DOWNLOAD_URL_EXPIRATION);

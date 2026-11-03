@@ -1,19 +1,26 @@
 package com.seoulaim.domain.diary.dto;
 
 import com.seoulaim.domain.diary.entity.Diary;
-import com.seoulaim.domain.order.dto.OrderItemInfo;
 import java.time.Instant;
 import java.util.UUID;
 
 public record DiarySummaryResponse(
-    UUID diaryId, String orderNumber, String productName, int pageCount, Instant submittedAt) {
+    UUID id,
+    String name,
+    boolean free,
+    boolean paid,
+    String thumbnailKey,
+    Instant lastEditedAt,
+    Instant completedAt) {
 
-  public static DiarySummaryResponse of(Diary diary, OrderItemInfo item) {
+  public static DiarySummaryResponse from(Diary diary) {
     return new DiarySummaryResponse(
         diary.getId(),
-        item.orderNumber(),
-        item.productName(),
-        diary.getPageCount(),
-        diary.getSubmittedAt());
+        diary.getName(),
+        diary.isFree(),
+        diary.isPaid(),
+        diary.thumbnailKey(),
+        diary.getLastEditedAt(),
+        diary.getCompletedAt());
   }
 }

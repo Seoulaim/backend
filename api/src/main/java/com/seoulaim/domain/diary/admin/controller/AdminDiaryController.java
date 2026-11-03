@@ -77,7 +77,7 @@ public class AdminDiaryController {
     return diaryAssetService.updateSticker(stickerId, request);
   }
 
-  @Operation(summary = "[관리자] 제출된 다이어리 목록 (최신순, 최대 200개)")
+  @Operation(summary = "[관리자] 다이어리 목록 (삭제 제외, 생성 최신순, 최대 200개)")
   @GetMapping("/diaries")
   public List<AdminDiarySummaryResponse> getDiaries() {
     return diaryService.getAdminDiaries();

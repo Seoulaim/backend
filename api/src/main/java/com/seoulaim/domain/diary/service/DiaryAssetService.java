@@ -13,6 +13,7 @@ import com.seoulaim.domain.diary.repository.DiaryTemplateRepository;
 import com.seoulaim.domain.file.service.FileService;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -39,6 +40,18 @@ public class DiaryAssetService {
   public List<DiaryStickerResponse> getActiveStickers() {
     return diaryStickerRepository.findAllByIsActiveTrueOrderByDisplayOrderAscIdAsc().stream()
         .map(DiaryStickerResponse::from)
+        .toList();
+  }
+
+  /** 주어진 id 중 비활성 템플릿만. 편집 중인 다이어리가 이미 쓰고 있는 템플릿을 계속 보여주기 위해 쓴다. */
+  public List<DiaryTemplateResponse> getInactiveTemplates(Collection<UUID> templateIds) {
+    if (templateIds.isEmpty()) {
+      return List.of();
+    }
+    return diaryTemplateRepository
+        .findAllByIdInAndIsActiveFalseOrderByDisplayOrderAscIdAsc(templateIds)
+        .stream()
+        .map(DiaryTemplateResponse::from)
         .toList();
   }
 
