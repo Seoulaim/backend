@@ -56,10 +56,16 @@ public class FileService {
 
   // 어드민만 올릴 수 있는 도메인. jpeg/png/webp 만 허용한다 (heic 제외)
   private static final Set<FileDomain> ADMIN_ONLY_DOMAINS =
-      EnumSet.of(FileDomain.DIARY_TEMPLATE, FileDomain.DIARY_STICKER);
+      EnumSet.of(
+          FileDomain.DIARY_TEMPLATE, FileDomain.DIARY_STICKER, FileDomain.ARTIST, FileDomain.PLACE);
   // 어드민 업로드 API 가 받는 도메인
   private static final Set<FileDomain> ADMIN_UPLOAD_DOMAINS =
-      EnumSet.of(FileDomain.DIARY_TEMPLATE, FileDomain.DIARY_STICKER, FileDomain.PRODUCT);
+      EnumSet.of(
+          FileDomain.DIARY_TEMPLATE,
+          FileDomain.DIARY_STICKER,
+          FileDomain.PRODUCT,
+          FileDomain.ARTIST,
+          FileDomain.PLACE);
   private static final DateTimeFormatter KEY_MONTH_FORMAT =
       DateTimeFormatter.ofPattern("yyyy/MM").withZone(ZoneOffset.UTC);
 
@@ -78,7 +84,7 @@ public class FileService {
     return issuePresignedUpload(uploaderId, domain, request);
   }
 
-  /** 어드민 업로드. DIARY_TEMPLATE, DIARY_STICKER, PRODUCT 만 허용하고 uploaderId 는 null 로 저장한다. */
+  /** 어드민 업로드. ADMIN_UPLOAD_DOMAINS 만 허용하고 uploaderId 는 null 로 저장한다. */
   @Transactional
   public PresignedUploadResponse createAdminPresignedUpload(PresignedUploadRequest request) {
     FileDomain domain = FileDomain.from(request.domain());
@@ -165,6 +171,27 @@ public class FileService {
     List<File> files = fileRepository.findAllById(uniqueIds);
     if (files.size() != uniqueIds.size()) {
       throw new BusinessException(ErrorCode.FILE_NOT_FOUND);
+    }
+    files.stream().filter(file -> !file.isLinked()).forEach(File::link);
+  }
+
+  /**
+   * s3 key 로 파일을 찾아 엔티티에 연결한다. 이미 LINKED 인 파일은 그대로 둔다.
+   *
+   * @throws BusinessException 없는 key 가 섞여 있으면 FILE_NOT_FOUND, 도메인이 다르면 FILE_INVALID_DOMAIN
+   */
+  @Transactional
+  public void markLinkedByS3Keys(Collection<String> s3Keys, FileDomain domain) {
+    if (s3Keys.isEmpty()) {
+      return;
+    }
+    Set<String> uniqueKeys = new HashSet<>(s3Keys);
+    List<File> files = fileRepository.findAllByS3KeyIn(uniqueKeys);
+    if (files.size() != uniqueKeys.size()) {
+      throw new BusinessException(ErrorCode.FILE_NOT_FOUND);
+    }
+    if (files.stream().anyMatch(file -> file.getDomain() != domain)) {
+      throw new BusinessException(ErrorCode.FILE_INVALID_DOMAIN);
     }
     files.stream().filter(file -> !file.isLinked()).forEach(File::link);
   }
