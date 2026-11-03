@@ -41,12 +41,31 @@ VALUES
     ON CONFLICT (id) DO NOTHING;
 
 -- 장소 (경도, 위도 순서)
-INSERT INTO places (id, name, category, address, location, district, opens_at, closes_at, avg_stay_minutes, phone, homepage_url, video_key, visit_count, created_at, updated_at)
+INSERT INTO places (id, name, category, address, location, district, avg_stay_minutes, phone, homepage_url, video_key, visit_count, created_at, updated_at)
 VALUES
-    ('01a00000-0000-7000-8000-000000003001', '어니언 성수', 'VISIT_SPOT', '서울 성동구 아차산로9길 8',
-     ST_GeogFromText('SRID=4326;POINT(127.0581 37.5447)'), '성동구', '10:00', '22:00', 60, NULL, NULL, NULL, 0, now(), now()),
-    ('01a00000-0000-7000-8000-000000003002', '테스트 생일카페', 'BIRTHDAY_CAFE', '서울 마포구 테스트로 1',
-     ST_GeogFromText('SRID=4326;POINT(126.9236 37.5563)'), '마포구', '10:00', '21:00', 60, NULL, NULL, NULL, 0, now(), now())
+    ('01a00000-0000-7000-8000-000000003001', '어니언 성수', 'FANDOM_PLACE', '서울 성동구 아차산로9길 8',
+     ST_GeogFromText('SRID=4326;POINT(127.0581 37.5447)'), '성동구', 60, NULL, NULL, NULL, 0, now(), now()),
+    ('01a00000-0000-7000-8000-000000003002', '테스트 생일카페', 'FANDOM_PLACE', '서울 마포구 테스트로 1',
+     ST_GeogFromText('SRID=4326;POINT(126.9236 37.5563)'), '마포구', 60, NULL, NULL, NULL, 0, now(), now())
+    ON CONFLICT (id) DO NOTHING;
+
+-- 요일별 영업시간 (7개 요일)
+INSERT INTO place_opening_hours (id, place_id, day_of_week, closed, opens_at, closes_at, created_at, updated_at)
+VALUES
+    ('01a00000-0000-7000-8000-000000003501', '01a00000-0000-7000-8000-000000003001', 'MON', false, '10:00', '22:00', now(), now()),
+    ('01a00000-0000-7000-8000-000000003502', '01a00000-0000-7000-8000-000000003001', 'TUE', false, '10:00', '22:00', now(), now()),
+    ('01a00000-0000-7000-8000-000000003503', '01a00000-0000-7000-8000-000000003001', 'WED', false, '10:00', '22:00', now(), now()),
+    ('01a00000-0000-7000-8000-000000003504', '01a00000-0000-7000-8000-000000003001', 'THU', false, '10:00', '22:00', now(), now()),
+    ('01a00000-0000-7000-8000-000000003505', '01a00000-0000-7000-8000-000000003001', 'FRI', false, '10:00', '22:00', now(), now()),
+    ('01a00000-0000-7000-8000-000000003506', '01a00000-0000-7000-8000-000000003001', 'SAT', false, '10:00', '22:00', now(), now()),
+    ('01a00000-0000-7000-8000-000000003507', '01a00000-0000-7000-8000-000000003001', 'SUN', false, '10:00', '22:00', now(), now()),
+    ('01a00000-0000-7000-8000-000000003508', '01a00000-0000-7000-8000-000000003002', 'MON', false, '10:00', '21:00', now(), now()),
+    ('01a00000-0000-7000-8000-000000003509', '01a00000-0000-7000-8000-000000003002', 'TUE', false, '10:00', '21:00', now(), now()),
+    ('01a00000-0000-7000-8000-000000003510', '01a00000-0000-7000-8000-000000003002', 'WED', false, '10:00', '21:00', now(), now()),
+    ('01a00000-0000-7000-8000-000000003511', '01a00000-0000-7000-8000-000000003002', 'THU', false, '10:00', '21:00', now(), now()),
+    ('01a00000-0000-7000-8000-000000003512', '01a00000-0000-7000-8000-000000003002', 'FRI', false, '10:00', '21:00', now(), now()),
+    ('01a00000-0000-7000-8000-000000003513', '01a00000-0000-7000-8000-000000003002', 'SAT', false, '10:00', '21:00', now(), now()),
+    ('01a00000-0000-7000-8000-000000003514', '01a00000-0000-7000-8000-000000003002', 'SUN', false, '10:00', '21:00', now(), now())
     ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO place_images (id, place_id, image_key, display_order, created_at, updated_at)

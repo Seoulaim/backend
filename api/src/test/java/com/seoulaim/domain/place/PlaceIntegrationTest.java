@@ -14,10 +14,13 @@ import com.seoulaim.domain.place.entity.Place;
 import com.seoulaim.domain.place.entity.PlaceCategory;
 import com.seoulaim.domain.place.entity.PlaceEvent;
 import com.seoulaim.domain.place.entity.PlaceImage;
+import com.seoulaim.domain.place.entity.PlaceOpeningHour;
+import com.seoulaim.domain.place.entity.Weekday;
 import com.seoulaim.domain.place.repository.ArtistPlaceRepository;
 import com.seoulaim.domain.place.repository.PlaceEventRepository;
 import com.seoulaim.domain.place.repository.PlaceFavoriteRepository;
 import com.seoulaim.domain.place.repository.PlaceImageRepository;
+import com.seoulaim.domain.place.repository.PlaceOpeningHourRepository;
 import com.seoulaim.domain.place.repository.PlaceRepository;
 import com.seoulaim.domain.place.service.PlaceFavoriteService;
 import com.seoulaim.domain.place.service.PlaceService;
@@ -57,7 +60,7 @@ class PlaceIntegrationTest {
           DockerImageName.parse("postgis/postgis:16-3.4").asCompatibleSubstituteFor("postgres"));
 
   private static final GeometryFactory GEOMETRY = new GeometryFactory(new PrecisionModel(), 4326);
-  // KST 2026-10-29 12:00
+  // KST 2026-10-29 (목) 12:00
   private static final Instant NOON_KST = Instant.parse("2026-10-29T03:00:00Z");
 
   @MockitoBean private Clock clock;
@@ -67,6 +70,7 @@ class PlaceIntegrationTest {
   @Autowired private PlaceRepository placeRepository;
   @Autowired private PlaceImageRepository placeImageRepository;
   @Autowired private PlaceEventRepository placeEventRepository;
+  @Autowired private PlaceOpeningHourRepository placeOpeningHourRepository;
   @Autowired private ArtistPlaceRepository artistPlaceRepository;
   @Autowired private PlaceFavoriteRepository placeFavoriteRepository;
   @Autowired private ArtistRepository artistRepository;
@@ -81,6 +85,7 @@ class PlaceIntegrationTest {
     placeFavoriteRepository.deleteAllInBatch();
     artistPlaceRepository.deleteAllInBatch();
     placeEventRepository.deleteAllInBatch();
+    placeOpeningHourRepository.deleteAllInBatch();
     placeImageRepository.deleteAllInBatch();
     placeRepository.deleteAllInBatch();
     artistRepository.deleteAllInBatch();
@@ -94,14 +99,13 @@ class PlaceIntegrationTest {
         placeRepository.save(
             Place.create(
                 "어니언 성수",
-                PlaceCategory.VISIT_SPOT,
+                PlaceCategory.FANDOM_PLACE,
                 "서울 성동구 아차산로9길 8",
                 GEOMETRY.createPoint(new Coordinate(127.0581, 37.5447)),
                 "성동구",
-                LocalTime.of(10, 0),
-                LocalTime.of(22, 0),
                 null,
                 null));
+    saveDailyHours(cafe, LocalTime.of(10, 0), LocalTime.of(22, 0), null, null);
     placeImageRepository.save(PlaceImage.create(cafe, "place/b.jpg", 2));
     placeImageRepository.save(PlaceImage.create(cafe, "place/a.jpg", 1));
 
@@ -122,7 +126,11 @@ class PlaceIntegrationTest {
     assertThat(result.artists()).hasSize(1);
     assertThat(result.artists().getFirst().artistNameEn()).isEqualTo("LIZ");
     assertThat(result.artists().getFirst().artistGroupNameEn()).isEqualTo("IVE");
+    assertThat(result.opensAt()).isEqualTo(LocalTime.of(10, 0));
+    assertThat(result.closesAt()).isEqualTo(LocalTime.of(22, 0));
     assertThat(result.isOpenNow()).isTrue();
+    assertThat(result.openingHours()).hasSize(7);
+    assertThat(result.openingHours().getFirst().dayOfWeek()).isEqualTo(Weekday.MON);
     assertThat(result.ongoingEvent()).isNull();
     assertThat(result.isFavorite()).isFalse();
   }
@@ -144,6 +152,66 @@ class PlaceIntegrationTest {
     assertThat(result.ongoingEvent().title()).isEqualTo("생일 카페");
     assertThat(result.opensAt()).isEqualTo(LocalTime.of(14, 0));
     assertThat(result.isOpenNow()).isFalse();
+  }
+
+  @Test
+  @DisplayName("오늘이 휴무 요일이면 오늘 영업시간은 null 이고 영업 중이 아니다")
+  void getPlaceDetail_휴무요일() {
+    placeOpeningHourRepository.deleteAllInBatch();
+    for (Weekday day : Weekday.values()) {
+      placeOpeningHourRepository.save(
+          day == Weekday.THU
+              ? PlaceOpeningHour.closedOn(cafe, day)
+              : PlaceOpeningHour.open(
+                  cafe, day, LocalTime.of(10, 0), LocalTime.of(22, 0), null, null));
+    }
+
+    PlaceDetailResponse result = placeService.getPlaceDetail(userId, cafe.getId());
+
+    assertThat(result.opensAt()).isNull();
+    assertThat(result.closesAt()).isNull();
+    assertThat(result.isOpenNow()).isFalse();
+  }
+
+  @Test
+  @DisplayName("브레이크 시간에는 영업 중이 아니다")
+  void getPlaceDetail_브레이크() {
+    placeOpeningHourRepository.deleteAllInBatch();
+    saveDailyHours(
+        cafe, LocalTime.of(10, 0), LocalTime.of(22, 0), LocalTime.of(11, 30), LocalTime.of(12, 30));
+
+    PlaceDetailResponse result = placeService.getPlaceDetail(userId, cafe.getId());
+
+    assertThat(result.isOpenNow()).isFalse();
+    assertThat(result.openingHours().getFirst().breakStartsAt()).isEqualTo(LocalTime.of(11, 30));
+  }
+
+  @Test
+  @DisplayName("영업시간이 없는 장소는 언제든 영업 중이고 openingHours 는 null 이다")
+  void getPlaceDetail_영업시간없음() {
+    placeOpeningHourRepository.deleteAllInBatch();
+
+    PlaceDetailResponse result = placeService.getPlaceDetail(userId, cafe.getId());
+
+    assertThat(result.opensAt()).isNull();
+    assertThat(result.isOpenNow()).isTrue();
+    assertThat(result.openingHours()).isNull();
+  }
+
+  @Test
+  @DisplayName("숨김 장소는 상세 조회·즐겨찾기 시 PLACE_NOT_FOUND 예외가 발생한다")
+  void getPlaceDetail_숨김장소_예외() {
+    cafe.changeVisibility(false);
+    placeRepository.save(cafe);
+
+    assertThatThrownBy(() -> placeService.getPlaceDetail(userId, cafe.getId()))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.PLACE_NOT_FOUND);
+    assertThatThrownBy(() -> placeFavoriteService.addFavorite(userId, cafe.getId()))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.PLACE_NOT_FOUND);
   }
 
   @Test
@@ -177,5 +245,17 @@ class PlaceIntegrationTest {
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.PLACE_NOT_FOUND);
+  }
+
+  private void saveDailyHours(
+      Place place,
+      LocalTime opensAt,
+      LocalTime closesAt,
+      LocalTime breakStartsAt,
+      LocalTime breakEndsAt) {
+    for (Weekday day : Weekday.values()) {
+      placeOpeningHourRepository.save(
+          PlaceOpeningHour.open(place, day, opensAt, closesAt, breakStartsAt, breakEndsAt));
+    }
   }
 }

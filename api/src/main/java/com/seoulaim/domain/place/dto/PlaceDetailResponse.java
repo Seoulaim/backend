@@ -14,7 +14,8 @@ import java.util.UUID;
  * 장소 상세 (HT10)
  *
  * <ul>
- *   <li>opensAt·closesAt: 진행 중 이벤트 운영시간 우선, 없으면 상시 영업시간
+ *   <li>opensAt·closesAt: 오늘(KST) 영업시간. 진행 중 이벤트에 운영시간이 있으면 이벤트 시간 우선, 휴무·영업시간 없음이면 null
+ *   <li>openingHours: 요일별 영업시간 7개, 영업시간 없음이면 null
  *   <li>artists[].artistId·artistNameEn: 그룹 단위 연결이면 null
  * </ul>
  */
@@ -29,6 +30,7 @@ public record PlaceDetailResponse(
     @JsonFormat(pattern = "HH:mm") LocalTime opensAt,
     @JsonFormat(pattern = "HH:mm") LocalTime closesAt,
     boolean isOpenNow,
+    List<PlaceOpeningHourResponse> openingHours,
     OngoingEvent ongoingEvent,
     List<String> imageKeys,
     List<ArtistLink> artists,
@@ -45,7 +47,7 @@ public record PlaceDetailResponse(
       String artistNameEn,
       String description) {
 
-    static ArtistLink from(ArtistPlace artistPlace) {
+    public static ArtistLink from(ArtistPlace artistPlace) {
       boolean groupLink = artistPlace.getArtist() == null;
       return new ArtistLink(
           artistPlace.getArtistGroup().getId(),
@@ -61,6 +63,7 @@ public record PlaceDetailResponse(
       LocalTime opensAt,
       LocalTime closesAt,
       boolean isOpenNow,
+      List<PlaceOpeningHourResponse> openingHours,
       PlaceEvent ongoingEvent,
       List<String> imageKeys,
       List<ArtistPlace> artistPlaces,
@@ -84,6 +87,7 @@ public record PlaceDetailResponse(
         opensAt,
         closesAt,
         isOpenNow,
+        openingHours,
         event,
         imageKeys,
         artistPlaces.stream().map(ArtistLink::from).toList(),

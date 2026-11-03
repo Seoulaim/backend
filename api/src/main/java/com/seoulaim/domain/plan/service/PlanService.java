@@ -7,6 +7,8 @@ import com.seoulaim.domain.place.entity.ArtistPlace;
 import com.seoulaim.domain.place.entity.Place;
 import com.seoulaim.domain.place.entity.PlaceEvent;
 import com.seoulaim.domain.place.entity.PlaceKeyword;
+import com.seoulaim.domain.place.entity.PlaceOpeningHour;
+import com.seoulaim.domain.place.entity.Weekday;
 import com.seoulaim.domain.place.service.KeywordService;
 import com.seoulaim.domain.place.service.PlaceService;
 import com.seoulaim.domain.plan.dto.CreatePlanRequest;
@@ -93,7 +95,9 @@ public class PlanService {
       List<Artist> artists = artistService.getArtistsWithGroup(artistIds);
       Set<UUID> placeIds =
           placeService.findArtistPlacesByArtists(artistIds, groupIds(artists)).stream()
-              .map(artistPlace -> artistPlace.getPlace().getId())
+              .map(ArtistPlace::getPlace)
+              .filter(Place::isVisible)
+              .map(Place::getId)
               .collect(Collectors.toSet());
       for (PlaceEvent event : placeService.findEventsInPeriod(placeIds, startDate, endDate)) {
         dates.stream()
@@ -213,7 +217,7 @@ public class PlanService {
     travelPlanRepository.delete(plan);
   }
 
-  // 아티스트 연결 + 키워드 일치 장소를 모아 점수 합산
+  // 아티스트 연결 + 키워드 일치 장소를 모아 점수 합산. 숨김 장소 제외
   private List<Candidate> buildCandidates(
       List<Artist> artists, List<UUID> keywordIds, LocalDate startDate, LocalDate endDate) {
     Map<UUID, Place> places = new LinkedHashMap<>();
@@ -223,6 +227,9 @@ public class PlanService {
     for (ArtistPlace artistPlace :
         placeService.findArtistPlacesByArtists(artistIds, groupIds(artists))) {
       Place place = artistPlace.getPlace();
+      if (!place.isVisible()) {
+        continue;
+      }
       places.putIfAbsent(place.getId(), place);
       int score =
           artistPlace.getArtist() == null
@@ -232,13 +239,20 @@ public class PlanService {
     }
     for (PlaceKeyword placeKeyword : placeService.findPlaceKeywordsByKeywords(keywordIds)) {
       Place place = placeKeyword.getPlace();
+      if (!place.isVisible()) {
+        continue;
+      }
       places.putIfAbsent(place.getId(), place);
       scores.merge(place.getId(), PlanRecommender.KEYWORD_SCORE, Integer::sum);
     }
 
+    Set<UUID> placeIds = places.keySet();
     Map<UUID, List<PlaceEvent>> eventsByPlaceId =
-        placeService.findEventsInPeriod(places.keySet(), startDate, endDate).stream()
+        placeService.findEventsInPeriod(placeIds, startDate, endDate).stream()
             .collect(Collectors.groupingBy(event -> event.getPlace().getId()));
+    Set<UUID> periodLimitedIds = placeService.findPeriodLimitedPlaceIds(placeIds);
+    Map<UUID, Map<Weekday, PlaceOpeningHour>> hoursByPlaceId =
+        placeService.findOpeningHoursByPlaceIds(placeIds);
 
     return places.values().stream()
         .map(
@@ -246,7 +260,9 @@ public class PlanService {
                 new Candidate(
                     place,
                     scores.get(place.getId()),
-                    eventsByPlaceId.getOrDefault(place.getId(), List.of())))
+                    eventsByPlaceId.getOrDefault(place.getId(), List.of()),
+                    periodLimitedIds.contains(place.getId()),
+                    hoursByPlaceId.getOrDefault(place.getId(), Map.of())))
         .toList();
   }
 
