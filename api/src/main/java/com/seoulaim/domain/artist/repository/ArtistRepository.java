@@ -12,6 +12,8 @@ public interface ArtistRepository extends JpaRepository<Artist, UUID> {
 
   List<Artist> findAllByArtistGroupIdOrderByDisplayOrderAscIdAsc(UUID artistGroupId);
 
+  List<Artist> findAllByArtistGroupIdInOrderByDisplayOrderAscIdAsc(Collection<UUID> artistGroupIds);
+
   /**
    * 아티스트·그룹 이름 부분 일치 검색 (대소문자 무시)
    *
@@ -24,15 +26,15 @@ public interface ArtistRepository extends JpaRepository<Artist, UUID> {
   @Query(
       value =
           """
-                  SELECT a.*
-                  FROM artists a
-                  JOIN artist_groups g ON g.id = a.artist_group_id
-                  WHERE (a.name_en ILIKE :pattern OR a.name_ko ILIKE :pattern
-                         OR g.name_en ILIKE :pattern OR g.name_ko ILIKE :pattern)
-                    AND (CAST(:cursor AS uuid) IS NULL OR a.id > CAST(:cursor AS uuid))
-                  ORDER BY a.id
-                  LIMIT :limit
-                  """,
+                          SELECT a.*
+                          FROM artists a
+                          JOIN artist_groups g ON g.id = a.artist_group_id
+                          WHERE (a.name_en ILIKE :pattern OR a.name_ko ILIKE :pattern
+                                 OR g.name_en ILIKE :pattern OR g.name_ko ILIKE :pattern)
+                            AND (CAST(:cursor AS uuid) IS NULL OR a.id > CAST(:cursor AS uuid))
+                          ORDER BY a.id
+                          LIMIT :limit
+                          """,
       nativeQuery = true)
   List<Artist> searchByKeyword(
       @Param("pattern") String pattern, @Param("cursor") String cursor, @Param("limit") int limit);

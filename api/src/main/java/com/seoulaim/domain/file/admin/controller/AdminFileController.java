@@ -23,7 +23,9 @@ public class AdminFileController {
 
   private final FileService fileService;
 
-  @Operation(summary = "[관리자] 이미지 업로드용 presigned PUT URL 발급 (DIARY_TEMPLATE·DIARY_STICKER·PRODUCT)")
+  @Operation(
+      summary =
+          "[관리자] 이미지 업로드용 presigned PUT URL 발급 (DIARY_TEMPLATE·DIARY_STICKER·PRODUCT·ARTIST·PLACE)")
   @PostMapping("/presigned-upload")
   public PresignedUploadResponse createPresignedUpload(
       @Valid @RequestBody PresignedUploadRequest request) {

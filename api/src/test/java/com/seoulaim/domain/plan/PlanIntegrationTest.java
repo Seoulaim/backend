@@ -12,8 +12,11 @@ import com.seoulaim.domain.place.entity.ArtistPlace;
 import com.seoulaim.domain.place.entity.Place;
 import com.seoulaim.domain.place.entity.PlaceCategory;
 import com.seoulaim.domain.place.entity.PlaceEvent;
+import com.seoulaim.domain.place.entity.PlaceOpeningHour;
+import com.seoulaim.domain.place.entity.Weekday;
 import com.seoulaim.domain.place.repository.ArtistPlaceRepository;
 import com.seoulaim.domain.place.repository.PlaceEventRepository;
+import com.seoulaim.domain.place.repository.PlaceOpeningHourRepository;
 import com.seoulaim.domain.place.repository.PlaceRepository;
 import com.seoulaim.domain.plan.dto.CreatePlanRequest;
 import com.seoulaim.domain.plan.dto.PlanDetailResponse;
@@ -74,6 +77,7 @@ class PlanIntegrationTest {
   @Autowired private TravelPlanRepository travelPlanRepository;
   @Autowired private ArtistPlaceRepository artistPlaceRepository;
   @Autowired private PlaceEventRepository placeEventRepository;
+  @Autowired private PlaceOpeningHourRepository placeOpeningHourRepository;
   @Autowired private PlaceRepository placeRepository;
   @Autowired private ArtistRepository artistRepository;
   @Autowired private ArtistGroupRepository artistGroupRepository;
@@ -81,6 +85,7 @@ class PlanIntegrationTest {
 
   private UUID userId;
   private UUID sanId;
+  private Place cafe;
 
   @BeforeEach
   void setUp() {
@@ -89,6 +94,7 @@ class PlanIntegrationTest {
     travelPlanRepository.deleteAllInBatch();
     artistPlaceRepository.deleteAllInBatch();
     placeEventRepository.deleteAllInBatch();
+    placeOpeningHourRepository.deleteAllInBatch();
     placeRepository.deleteAllInBatch();
     artistRepository.deleteAllInBatch();
     artistGroupRepository.deleteAllInBatch();
@@ -102,30 +108,28 @@ class PlanIntegrationTest {
     Artist san = artistRepository.save(Artist.create(ateez, "SAN", "산", null, null, null, null, 1));
     sanId = san.getId();
 
-    Place cafe =
+    cafe =
         placeRepository.save(
             Place.create(
                 "어니언 성수",
-                PlaceCategory.VISIT_SPOT,
+                PlaceCategory.FANDOM_PLACE,
                 "서울 성동구 아차산로9길 8",
                 GEOMETRY.createPoint(new Coordinate(127.0581, 37.5447)),
                 "성동구",
-                LocalTime.of(10, 0),
-                LocalTime.of(22, 0),
                 null,
                 null));
     Place birthdayCafe =
         placeRepository.save(
             Place.create(
                 "테스트 생일카페",
-                PlaceCategory.BIRTHDAY_CAFE,
+                PlaceCategory.FANDOM_PLACE,
                 "서울 마포구 테스트로 1",
                 GEOMETRY.createPoint(new Coordinate(126.9236, 37.5563)),
                 "마포구",
-                LocalTime.of(10, 0),
-                LocalTime.of(21, 0),
                 null,
                 null));
+    saveDailyHours(cafe, LocalTime.of(10, 0), LocalTime.of(22, 0));
+    saveDailyHours(birthdayCafe, LocalTime.of(10, 0), LocalTime.of(21, 0));
     artistPlaceRepository.save(ArtistPlace.ofGroup(cafe, ateez, "그룹 연결"));
     artistPlaceRepository.save(ArtistPlace.ofArtist(birthdayCafe, san, "멤버 연결"));
     placeEventRepository.save(
@@ -166,7 +170,7 @@ class PlanIntegrationTest {
   }
 
   @Test
-  @DisplayName("이벤트가 없는 날에는 생일카페를 후보에서 제외한다")
+  @DisplayName("운영 기간이 있는 장소는 기간 밖의 날에 후보에서 제외한다")
   void createPlan_이벤트없는날_생일카페제외() {
     PlanDetailResponse result =
         planService.createPlan(
@@ -181,6 +185,84 @@ class PlanIntegrationTest {
     List<PlanItemResponse> items = result.days().getFirst().items();
     assertThat(items).extracting(item -> item.place().name()).containsExactly("어니언 성수");
     assertThat(items.getFirst().arrivalTime()).isEqualTo(LocalTime.of(10, 0));
+  }
+
+  @Test
+  @DisplayName("방문일이 휴무 요일인 장소는 후보에서 제외한다")
+  void createPlan_휴무요일_제외() {
+    // 11/02 은 월요일
+    placeOpeningHourRepository.deleteAllInBatch();
+    for (Weekday day : Weekday.values()) {
+      placeOpeningHourRepository.save(
+          day == Weekday.MON
+              ? PlaceOpeningHour.closedOn(cafe, day)
+              : PlaceOpeningHour.open(
+                  cafe, day, LocalTime.of(10, 0), LocalTime.of(22, 0), null, null));
+    }
+
+    assertThatThrownBy(
+            () ->
+                planService.createPlan(
+                    userId,
+                    new CreatePlanRequest(
+                        LocalDate.of(2026, 11, 2),
+                        LocalDate.of(2026, 11, 3),
+                        List.of(LocalDate.of(2026, 11, 2)),
+                        List.of(sanId),
+                        null)))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.PLAN_NO_CANDIDATE_PLACE);
+  }
+
+  @Test
+  @DisplayName("브레이크 중 도착하면 브레이크가 끝날 때까지 기다린 시각을 저장한다")
+  void createPlan_브레이크_대기() {
+    placeOpeningHourRepository.deleteAllInBatch();
+    for (Weekday day : Weekday.values()) {
+      placeOpeningHourRepository.save(
+          PlaceOpeningHour.open(
+              cafe,
+              day,
+              LocalTime.of(9, 0),
+              LocalTime.of(22, 0),
+              LocalTime.of(10, 0),
+              LocalTime.of(11, 0)));
+    }
+
+    PlanDetailResponse result =
+        planService.createPlan(
+            userId,
+            new CreatePlanRequest(
+                LocalDate.of(2026, 11, 2),
+                LocalDate.of(2026, 11, 3),
+                List.of(LocalDate.of(2026, 11, 2)),
+                List.of(sanId),
+                null));
+
+    assertThat(result.days().getFirst().items().getFirst().arrivalTime())
+        .isEqualTo(LocalTime.of(11, 0));
+  }
+
+  @Test
+  @DisplayName("숨김 장소는 후보에서 제외한다")
+  void createPlan_숨김장소_제외() {
+    cafe.changeVisibility(false);
+    placeRepository.save(cafe);
+
+    assertThatThrownBy(
+            () ->
+                planService.createPlan(
+                    userId,
+                    new CreatePlanRequest(
+                        LocalDate.of(2026, 11, 2),
+                        LocalDate.of(2026, 11, 3),
+                        List.of(LocalDate.of(2026, 11, 2)),
+                        List.of(sanId),
+                        null)))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.PLAN_NO_CANDIDATE_PLACE);
   }
 
   @Test
@@ -290,5 +372,12 @@ class PlanIntegrationTest {
                 List.of(sanId),
                 null))
         .id();
+  }
+
+  private void saveDailyHours(Place place, LocalTime opensAt, LocalTime closesAt) {
+    for (Weekday day : Weekday.values()) {
+      placeOpeningHourRepository.save(
+          PlaceOpeningHour.open(place, day, opensAt, closesAt, null, null));
+    }
   }
 }

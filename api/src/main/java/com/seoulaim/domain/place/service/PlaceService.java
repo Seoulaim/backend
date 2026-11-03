@@ -1,16 +1,20 @@
 package com.seoulaim.domain.place.service;
 
 import com.seoulaim.domain.place.dto.PlaceDetailResponse;
+import com.seoulaim.domain.place.dto.PlaceOpeningHourResponse;
 import com.seoulaim.domain.place.entity.ArtistPlace;
 import com.seoulaim.domain.place.entity.Place;
 import com.seoulaim.domain.place.entity.PlaceEvent;
 import com.seoulaim.domain.place.entity.PlaceImage;
 import com.seoulaim.domain.place.entity.PlaceKeyword;
+import com.seoulaim.domain.place.entity.PlaceOpeningHour;
+import com.seoulaim.domain.place.entity.Weekday;
 import com.seoulaim.domain.place.repository.ArtistPlaceRepository;
 import com.seoulaim.domain.place.repository.PlaceEventRepository;
 import com.seoulaim.domain.place.repository.PlaceFavoriteRepository;
 import com.seoulaim.domain.place.repository.PlaceImageRepository;
 import com.seoulaim.domain.place.repository.PlaceKeywordRepository;
+import com.seoulaim.domain.place.repository.PlaceOpeningHourRepository;
 import com.seoulaim.domain.place.repository.PlaceRepository;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
@@ -20,9 +24,12 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -40,32 +47,64 @@ public class PlaceService {
   private final PlaceRepository placeRepository;
   private final PlaceImageRepository placeImageRepository;
   private final PlaceEventRepository placeEventRepository;
+  private final PlaceOpeningHourRepository placeOpeningHourRepository;
   private final ArtistPlaceRepository artistPlaceRepository;
   private final PlaceFavoriteRepository placeFavoriteRepository;
   private final PlaceKeywordRepository placeKeywordRepository;
   private final Clock clock;
 
+  // 사용자용 조회. 숨김 장소는 없는 장소와 같은 응답
   public Place getPlace(UUID placeId) {
     return placeRepository
         .findById(placeId)
+        .filter(Place::isVisible)
         .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
   }
 
   public PlaceDetailResponse getPlaceDetail(UUID userId, UUID placeId) {
     Place place = getPlace(placeId);
     LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), KST);
+    LocalTime time = now.toLocalTime();
 
     PlaceEvent ongoingEvent =
         placeEventRepository.findOngoingByPlaceId(placeId, now.toLocalDate()).stream()
             .findFirst()
             .orElse(null);
-    // 이벤트에 운영시간이 있으면 이벤트 시간, 없으면 상시 영업시간
-    boolean useEventHours =
-        ongoingEvent != null
-            && ongoingEvent.getOpensAt() != null
-            && ongoingEvent.getClosesAt() != null;
-    LocalTime opensAt = useEventHours ? ongoingEvent.getOpensAt() : place.getOpensAt();
-    LocalTime closesAt = useEventHours ? ongoingEvent.getClosesAt() : place.getClosesAt();
+    List<PlaceOpeningHour> weeklyHours = placeOpeningHourRepository.findAllByPlaceId(placeId);
+
+    LocalTime opensAt;
+    LocalTime closesAt;
+    boolean isOpenNow;
+    if (ongoingEvent != null
+        && ongoingEvent.getOpensAt() != null
+        && ongoingEvent.getClosesAt() != null) {
+      // 이벤트 운영시간 우선
+      opensAt = ongoingEvent.getOpensAt();
+      closesAt = ongoingEvent.getClosesAt();
+      isOpenNow = OpeningHours.isOpen(opensAt, closesAt, time);
+    } else if (weeklyHours.isEmpty()) {
+      // 영업시간 없음 → 언제든 방문 가능
+      opensAt = null;
+      closesAt = null;
+      isOpenNow = true;
+    } else {
+      Weekday today = Weekday.from(now.getDayOfWeek());
+      PlaceOpeningHour todayHour =
+          weeklyHours.stream()
+              .filter(hour -> hour.getDayOfWeek() == today && !hour.isClosed())
+              .findFirst()
+              .orElse(null);
+      opensAt = todayHour == null ? null : todayHour.getOpensAt();
+      closesAt = todayHour == null ? null : todayHour.getClosesAt();
+      isOpenNow =
+          todayHour != null
+              && OpeningHours.isOpen(
+                  opensAt,
+                  closesAt,
+                  todayHour.getBreakStartsAt(),
+                  todayHour.getBreakEndsAt(),
+                  time);
+    }
 
     List<String> imageKeys =
         placeImageRepository.findAllByPlaceIdOrderByDisplayOrderAscIdAsc(placeId).stream()
@@ -76,7 +115,8 @@ public class PlaceService {
         place,
         opensAt,
         closesAt,
-        OpeningHours.isOpen(opensAt, closesAt, now.toLocalTime()),
+        isOpenNow,
+        PlaceOpeningHourResponse.listOf(weeklyHours),
         ongoingEvent,
         imageKeys,
         artistPlaceRepository.findAllWithArtistByPlaceId(placeId),
@@ -99,6 +139,26 @@ public class PlaceService {
     return placeIds.isEmpty()
         ? List.of()
         : placeEventRepository.findAllInPeriod(placeIds, startDate, endDate);
+  }
+
+  // 운영 기간이 있는(기간 한정) 장소 ID
+  public Set<UUID> findPeriodLimitedPlaceIds(Collection<UUID> placeIds) {
+    return placeIds.isEmpty()
+        ? Set.of()
+        : new HashSet<>(placeEventRepository.findPlaceIdsHavingEvents(placeIds));
+  }
+
+  // 장소별 요일 영업시간. 영업시간 없음인 장소는 결과에 없음
+  public Map<UUID, Map<Weekday, PlaceOpeningHour>> findOpeningHoursByPlaceIds(
+      Collection<UUID> placeIds) {
+    if (placeIds.isEmpty()) {
+      return Map.of();
+    }
+    return placeOpeningHourRepository.findAllByPlaceIdIn(placeIds).stream()
+        .collect(
+            Collectors.groupingBy(
+                hour -> hour.getPlace().getId(),
+                Collectors.toMap(PlaceOpeningHour::getDayOfWeek, Function.identity())));
   }
 
   // 장소별 이미지 키 (display_order 순)

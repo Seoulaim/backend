@@ -73,4 +73,21 @@ public class Artist extends BaseEntity {
     artist.displayOrder = displayOrder;
     return artist;
   }
+
+  public void update(
+      String nameEn,
+      String nameKo,
+      String nameJa,
+      String nameZh,
+      String imageKey,
+      LocalDate birthDate,
+      int displayOrder) {
+    this.nameEn = nameEn;
+    this.nameKo = nameKo;
+    this.nameJa = nameJa;
+    this.nameZh = nameZh;
+    this.imageKey = imageKey;
+    this.birthDate = birthDate;
+    this.displayOrder = displayOrder;
+  }
 }

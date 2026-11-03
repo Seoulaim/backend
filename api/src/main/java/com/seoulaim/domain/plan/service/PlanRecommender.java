@@ -1,8 +1,9 @@
 package com.seoulaim.domain.plan.service;
 
 import com.seoulaim.domain.place.entity.Place;
-import com.seoulaim.domain.place.entity.PlaceCategory;
 import com.seoulaim.domain.place.entity.PlaceEvent;
+import com.seoulaim.domain.place.entity.PlaceOpeningHour;
+import com.seoulaim.domain.place.entity.Weekday;
 import com.seoulaim.domain.place.service.OpeningHours;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -21,10 +22,12 @@ import org.springframework.stereotype.Component;
  *
  * <ul>
  *   <li>점수: 멤버 연결 3, 그룹 연결 2, 키워드 일치 1, 당일 이벤트 +3
- *   <li>생일카페·옥외광고는 이벤트 기간에만 후보
+ *   <li>운영 기간이 있는 장소는 기간 안의 날짜에만 후보
+ *   <li>요일 영업시간이 휴무면 그날 후보 제외
  *   <li>날짜별 상위 점수 최대 5곳, 이미 배정한 장소는 다음 날 제외
  *   <li>방문 순서: 1위 장소에서 출발, 남은 곳 중 가장 가까운 곳
  *   <li>이동 시간: 직선거리 ÷ 15km/h + 환승 10분, 10:00 출발 ~ 21:00
+ *   <li>여는 시각 전·브레이크 중 도착 → 영업 재개까지 대기
  * </ul>
  */
 @Component
@@ -41,8 +44,22 @@ public class PlanRecommender {
   private static final int TRANSFER_MINUTES = 10;
   private static final double EARTH_RADIUS_KM = 6371.0;
 
-  // baseScore: 아티스트·키워드 점수 합 (이벤트 점수 제외)
-  public record Candidate(Place place, int baseScore, List<PlaceEvent> events) {}
+  /**
+   * 추천 후보
+   *
+   * <ul>
+   *   <li>baseScore: 아티스트·키워드 점수 합 (이벤트 점수 제외)
+   *   <li>events: 여행 기간과 겹치는 이벤트
+   *   <li>periodLimited: 운영 기간이 있는 장소 → 이벤트 기간에만 후보
+   *   <li>openingHours: 요일별 영업시간. 비어 있으면 영업시간 없음 (언제든 방문 가능)
+   * </ul>
+   */
+  public record Candidate(
+      Place place,
+      int baseScore,
+      List<PlaceEvent> events,
+      boolean periodLimited,
+      Map<Weekday, PlaceOpeningHour> openingHours) {}
 
   public record Stop(Place place, LocalTime arrivalTime) {}
 
@@ -72,10 +89,16 @@ public class PlanRecommender {
   }
 
   private boolean isAvailableOn(Candidate candidate, LocalDate date) {
-    PlaceCategory category = candidate.place().getCategory();
-    boolean eventOnly =
-        category == PlaceCategory.BIRTHDAY_CAFE || category == PlaceCategory.BILLBOARD;
-    return !eventOnly || ongoingEvent(candidate, date) != null;
+    PlaceEvent event = ongoingEvent(candidate, date);
+    if (candidate.periodLimited() && event == null) {
+      return false;
+    }
+    // 이벤트 운영시간이 있으면 요일 휴무와 무관
+    if (hasEventHours(event) || candidate.openingHours().isEmpty()) {
+      return true;
+    }
+    PlaceOpeningHour hour = candidate.openingHours().get(Weekday.from(date.getDayOfWeek()));
+    return hour != null && !hour.isClosed();
   }
 
   private int score(Candidate candidate, LocalDate date) {
@@ -88,6 +111,10 @@ public class PlanRecommender {
         .filter(event -> event.isOngoingOn(date))
         .max(Comparator.comparing(PlaceEvent::getStartsOn))
         .orElse(null);
+  }
+
+  private boolean hasEventHours(PlaceEvent event) {
+    return event != null && event.getOpensAt() != null && event.getClosesAt() != null;
   }
 
   private List<Candidate> orderByNearest(List<Candidate> picked) {
@@ -119,32 +146,47 @@ public class PlanRecommender {
     for (Candidate candidate : ordered) {
       Place place = candidate.place();
       int arrival = previous == null ? minute : minute + travelMinutes(previous, place);
-
-      PlaceEvent event = ongoingEvent(candidate, date);
-      boolean useEventHours =
-          event != null && event.getOpensAt() != null && event.getClosesAt() != null;
-      LocalTime opensAt = useEventHours ? event.getOpensAt() : place.getOpensAt();
-      LocalTime closesAt = useEventHours ? event.getClosesAt() : place.getClosesAt();
-      boolean hasHours = opensAt != null && closesAt != null;
-
-      // 여는 시각 전 도착 → 여는 시각까지 대기 (자정 넘김 영업은 제외)
-      if (hasHours && closesAt.isAfter(opensAt)) {
-        arrival = Math.max(arrival, opensAt.getHour() * 60 + opensAt.getMinute());
-      }
       if (arrival > DAY_END_MINUTE) {
         continue;
       }
-      LocalTime arrivalTime = LocalTime.of(arrival / 60, arrival % 60);
-      // 영업시간 정보 없음 → 방문 가능으로 간주
-      if (hasHours && !OpeningHours.isOpen(opensAt, closesAt, arrivalTime)) {
+
+      LocalTime visitTime = visitTime(candidate, date, LocalTime.of(arrival / 60, arrival % 60));
+      if (visitTime == null) {
+        continue;
+      }
+      int visitMinute = visitTime.getHour() * 60 + visitTime.getMinute();
+      if (visitMinute > DAY_END_MINUTE) {
         continue;
       }
 
-      stops.add(new Stop(place, arrivalTime));
-      minute = arrival + place.getAvgStayMinutes();
+      stops.add(new Stop(place, visitTime));
+      minute = visitMinute + place.getAvgStayMinutes();
       previous = place;
     }
     return stops;
+  }
+
+  // 방문 가능 시각. 영업시간 안에 방문 불가면 null
+  private LocalTime visitTime(Candidate candidate, LocalDate date, LocalTime arrival) {
+    PlaceEvent event = ongoingEvent(candidate, date);
+    if (hasEventHours(event)) {
+      return OpeningHours.earliestVisitTime(
+          event.getOpensAt(), event.getClosesAt(), null, null, arrival);
+    }
+    // 영업시간 없음 → 언제든 방문 가능
+    if (candidate.openingHours().isEmpty()) {
+      return arrival;
+    }
+    PlaceOpeningHour hour = candidate.openingHours().get(Weekday.from(date.getDayOfWeek()));
+    if (hour == null || hour.isClosed()) {
+      return null;
+    }
+    return OpeningHours.earliestVisitTime(
+        hour.getOpensAt(),
+        hour.getClosesAt(),
+        hour.getBreakStartsAt(),
+        hour.getBreakEndsAt(),
+        arrival);
   }
 
   private int travelMinutes(Place from, Place to) {

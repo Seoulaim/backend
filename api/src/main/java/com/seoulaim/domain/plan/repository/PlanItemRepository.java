@@ -10,13 +10,16 @@ import org.springframework.data.repository.query.Param;
 
 public interface PlanItemRepository extends JpaRepository<PlanItem, UUID> {
 
+  // 장소 삭제 가능 여부 확인
+  boolean existsByPlaceId(UUID placeId);
+
   @Query(
       """
-            SELECT i FROM PlanItem i
-            JOIN FETCH i.place
-            WHERE i.planDay.plan.id = :planId
-            ORDER BY i.planDay.dayNumber ASC, i.sequence ASC
-            """)
+                SELECT i FROM PlanItem i
+                JOIN FETCH i.place
+                WHERE i.planDay.plan.id = :planId
+                ORDER BY i.planDay.dayNumber ASC, i.sequence ASC
+                """)
   List<PlanItem> findAllWithPlaceByPlanId(@Param("planId") UUID planId);
 
   @Modifying

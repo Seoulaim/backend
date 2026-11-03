@@ -64,4 +64,21 @@ public class ArtistGroup extends BaseEntity {
     group.displayOrder = displayOrder;
     return group;
   }
+
+  public void update(
+      String nameEn,
+      String nameKo,
+      String nameJa,
+      String nameZh,
+      String imageKey,
+      LocalDate debutDate,
+      int displayOrder) {
+    this.nameEn = nameEn;
+    this.nameKo = nameKo;
+    this.nameJa = nameJa;
+    this.nameZh = nameZh;
+    this.imageKey = imageKey;
+    this.debutDate = debutDate;
+    this.displayOrder = displayOrder;
+  }
 }

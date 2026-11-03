@@ -7,15 +7,19 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
-import java.time.LocalTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.locationtech.jts.geom.Point;
 
 /**
- * 아이돌 관련 장소 - 지도 마커, 일정 항목, 추천 후보의 단위 - 기간 한정 운영(생일카페, 광고 게시)은 반복 가능 → PlaceEvent 로 분리 - 장소 소개 문구는
- * 아티스트마다 다름 → ArtistPlace 에 저장
+ * 아이돌 관련 장소
+ *
+ * <ul>
+ *   <li>지도 마커, 일정 항목, 추천 후보의 단위
+ *   <li>요일별 영업시간 → PlaceOpeningHour, 운영 기간 → PlaceEvent 로 분리
+ *   <li>장소 소개 문구는 아티스트마다 다름 → ArtistPlace 에 저장
+ * </ul>
  */
 @Getter
 @Entity
@@ -37,6 +41,10 @@ public class Place extends BaseEntity {
   @Column(name = "category", nullable = false, length = 30)
   private PlaceCategory category;
 
+  // false 면 일정 추천·공개 상세에서 제외 (어드민에서만 조회)
+  @Column(name = "visible", nullable = false)
+  private boolean visible;
+
   // 옥외 광고처럼 지번이 없는 장소 존재 → nullable. 위치 기준은 location
   @Column(name = "address", length = 500)
   private String address;
@@ -50,15 +58,7 @@ public class Place extends BaseEntity {
   @Column(name = "district", length = 50)
   private String district;
 
-  // 상시 영업시간. 이벤트 기간에는 PlaceEvent 의 시간 우선
-  // closesAt < opensAt 이면 다음 날 새벽 마감
-  @Column(name = "opens_at")
-  private LocalTime opensAt;
-
-  @Column(name = "closes_at")
-  private LocalTime closesAt;
-
-  // 추천 시 하루 장소 수, 다음 장소 도착 시각 계산에 사용
+  // 추천 시 다음 장소 도착 시각 계산에 사용
   @Column(name = "avg_stay_minutes", nullable = false)
   private int avgStayMinutes;
 
@@ -82,18 +82,15 @@ public class Place extends BaseEntity {
       String address,
       Point location,
       String district,
-      LocalTime opensAt,
-      LocalTime closesAt,
       String phone,
       String homepageUrl) {
     Place place = new Place();
     place.name = name;
     place.category = category;
+    place.visible = true;
     place.address = address;
     place.location = location;
     place.district = district;
-    place.opensAt = opensAt;
-    place.closesAt = closesAt;
     place.avgStayMinutes = DEFAULT_STAY_MINUTES;
     place.phone = phone;
     place.homepageUrl = homepageUrl;
@@ -101,14 +98,29 @@ public class Place extends BaseEntity {
     return place;
   }
 
-  // 상시 영업시간 기준 영업 여부. 이벤트 기간이면 PlaceEvent 시간 먼저 확인 필요
-  public boolean isOpenAt(LocalTime time) {
-    if (opensAt == null || closesAt == null) {
-      return false;
-    }
-    if (closesAt.isAfter(opensAt)) {
-      return !time.isBefore(opensAt) && time.isBefore(closesAt);
-    }
-    return !time.isBefore(opensAt) || time.isBefore(closesAt);
+  // 어드민 수정. 전체 교체
+  public void update(
+      String name,
+      PlaceCategory category,
+      boolean visible,
+      String address,
+      Point location,
+      String district,
+      int avgStayMinutes,
+      String phone,
+      String homepageUrl) {
+    this.name = name;
+    this.category = category;
+    this.visible = visible;
+    this.address = address;
+    this.location = location;
+    this.district = district;
+    this.avgStayMinutes = avgStayMinutes;
+    this.phone = phone;
+    this.homepageUrl = homepageUrl;
+  }
+
+  public void changeVisibility(boolean visible) {
+    this.visible = visible;
   }
 }

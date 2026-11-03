@@ -39,10 +39,17 @@ public enum ErrorCode {
   ARTIST_GROUP_NOT_FOUND(HttpStatus.NOT_FOUND, "ARTIST_GROUP_NOT_FOUND", "그룹을 찾을 수 없습니다"),
   ARTIST_NOT_FOUND(HttpStatus.NOT_FOUND, "ARTIST_NOT_FOUND", "아티스트를 찾을 수 없습니다"),
   ARTIST_INVALID_CURSOR(HttpStatus.BAD_REQUEST, "ARTIST_INVALID_CURSOR", "잘못된 커서 값입니다"),
+  ARTIST_NOT_IN_GROUP(HttpStatus.BAD_REQUEST, "ARTIST_NOT_IN_GROUP", "해당 그룹의 멤버가 아닙니다"),
 
   // PLACE
   PLACE_NOT_FOUND(HttpStatus.NOT_FOUND, "PLACE_NOT_FOUND", "장소를 찾을 수 없습니다"),
   PLACE_KEYWORD_NOT_FOUND(HttpStatus.NOT_FOUND, "PLACE_KEYWORD_NOT_FOUND", "키워드를 찾을 수 없습니다"),
+  PLACE_INVALID_CURSOR(HttpStatus.BAD_REQUEST, "PLACE_INVALID_CURSOR", "잘못된 커서 값입니다"),
+  PLACE_IN_USE(HttpStatus.CONFLICT, "PLACE_IN_USE", "일정에 포함된 장소는 삭제할 수 없습니다"),
+  PLACE_INVALID_OPERATING_PERIOD(
+      HttpStatus.BAD_REQUEST, "PLACE_INVALID_OPERATING_PERIOD", "운영 기간이 올바르지 않습니다"),
+  PLACE_INVALID_OPENING_HOURS(
+      HttpStatus.BAD_REQUEST, "PLACE_INVALID_OPENING_HOURS", "영업시간이 올바르지 않습니다"),
 
   // PLAN
   PLAN_NOT_FOUND(HttpStatus.NOT_FOUND, "PLAN_NOT_FOUND", "일정을 찾을 수 없습니다"),

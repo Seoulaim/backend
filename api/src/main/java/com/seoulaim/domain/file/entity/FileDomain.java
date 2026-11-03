@@ -15,7 +15,10 @@ public enum FileDomain {
   INQUIRY,
   // 어드민 전용 (다이어리 편집기 에셋)
   DIARY_TEMPLATE,
-  DIARY_STICKER;
+  DIARY_STICKER,
+  // 어드민 전용 (그룹·멤버 사진, 장소 사진)
+  ARTIST,
+  PLACE;
 
   public static FileDomain from(String value) {
     return Arrays.stream(values())
