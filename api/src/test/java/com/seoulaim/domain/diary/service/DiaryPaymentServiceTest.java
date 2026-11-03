@@ -111,6 +111,19 @@ class DiaryPaymentServiceTest {
   }
 
   @Test
+  @DisplayName("결제 생성 응답에 설정(app.payment.toss.client-key)의 토스 클라이언트 키가 포함된다")
+  void createPayment_정상_클라이언트키포함() {
+    Diary diary = givenMyDiary(Diary.create(USER_ID, false));
+    given(diaryPaymentRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
+
+    DiaryPaymentCreateResponse response =
+        diaryPaymentService.createPayment(
+            USER_ID, diary.getId(), new DiaryPaymentCreateRequest(null, true));
+
+    assertThat(response.tossClientKey()).isEqualTo("test_ck").isNotBlank();
+  }
+
+  @Test
   @DisplayName("환불 규정 동의가 true 가 아니면 400 PAYMENT_CONSENT_REQUIRED")
   void createPayment_동의없음_400() {
     Diary diary = givenMyDiary(Diary.create(USER_ID, false));
