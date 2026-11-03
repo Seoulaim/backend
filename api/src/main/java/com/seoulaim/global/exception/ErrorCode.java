@@ -79,6 +79,9 @@ public enum ErrorCode {
       HttpStatus.BAD_REQUEST, "PAYMENT_AMOUNT_MISMATCH", "결제 금액이 주문 금액과 일치하지 않습니다"),
   PAYMENT_FAILED(HttpStatus.PAYMENT_REQUIRED, "PAYMENT_FAILED", "결제에 실패했습니다"),
   PAYMENT_GATEWAY_ERROR(HttpStatus.BAD_GATEWAY, "PAYMENT_GATEWAY_ERROR", "결제사 통신 중 오류가 발생했습니다"),
+  PAYMENT_ALREADY_PAID(HttpStatus.CONFLICT, "PAYMENT_ALREADY_PAID", "이미 결제가 완료되었습니다"),
+  PAYMENT_CONSENT_REQUIRED(
+      HttpStatus.BAD_REQUEST, "PAYMENT_CONSENT_REQUIRED", "환불 규정에 동의해야 결제할 수 있습니다"),
 
   // DIARY
   DIARY_NOT_FOUND(HttpStatus.NOT_FOUND, "DIARY_NOT_FOUND", "다이어리를 찾을 수 없습니다"),
@@ -89,6 +92,10 @@ public enum ErrorCode {
   DIARY_CONTENT_TOO_LARGE(HttpStatus.BAD_REQUEST, "DIARY_CONTENT_TOO_LARGE", "다이어리 편집 데이터가 너무 큽니다"),
   DIARY_TEMPLATE_NOT_FOUND(HttpStatus.NOT_FOUND, "DIARY_TEMPLATE_NOT_FOUND", "다이어리 템플릿을 찾을 수 없습니다"),
   DIARY_STICKER_NOT_FOUND(HttpStatus.NOT_FOUND, "DIARY_STICKER_NOT_FOUND", "다이어리 스티커를 찾을 수 없습니다"),
+  DIARY_FINALIZED(HttpStatus.CONFLICT, "DIARY_FINALIZED", "완성된 다이어리는 수정할 수 없습니다"),
+  DIARY_PAYMENT_REQUIRED(HttpStatus.PAYMENT_REQUIRED, "DIARY_PAYMENT_REQUIRED", "결제 후 저장할 수 있습니다"),
+  DIARY_INVALID_NAME(HttpStatus.BAD_REQUEST, "DIARY_INVALID_NAME", "다이어리 이름은 1~30자여야 합니다"),
+  DIARY_NOT_FINISHED(HttpStatus.CONFLICT, "DIARY_NOT_FINISHED", "아직 완성되지 않은 다이어리입니다"),
   ;
 
   private final HttpStatus status;

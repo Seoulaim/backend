@@ -1,19 +1,17 @@
 package com.seoulaim.domain.diary.controller;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.seoulaim.domain.diary.dto.DiarySubmitResponse;
+import com.seoulaim.domain.diary.dto.DiaryCreateResponse;
 import com.seoulaim.domain.diary.service.DiaryService;
-import com.seoulaim.global.exception.BusinessException;
-import com.seoulaim.global.exception.ErrorCode;
 import com.seoulaim.global.security.SecurityTestConfig;
 import com.seoulaim.global.security.TestAccessTokens;
 import java.util.UUID;
@@ -31,96 +29,48 @@ import org.springframework.test.web.servlet.MockMvc;
 @Import(SecurityTestConfig.class)
 class DiaryControllerTest {
 
-  private static final String REQUEST_BODY =
-      """
-      {
-        "orderItemId": "0199a1b2-0000-7000-8000-000000000001",
-        "pageCount": 12,
-        "content": {"pages": [{"templateId": "t1", "elements": []}]},
-        "pdfFileId": "0199a1b2-0000-7000-8000-000000000002"
-      }
-      """;
-
   @Autowired private MockMvc mockMvc;
   @Autowired private TestAccessTokens tokens;
   @MockitoBean private DiaryService diaryService;
 
   @Test
-  @DisplayName("올바른 제출 요청이면 201 과 diaryId 를 반환한다")
-  void submitDiary_정상요청_201반환() throws Exception {
+  @DisplayName("다이어리를 만들면 201 과 diaryId 를 반환한다")
+  void createDiary_정상_201반환() throws Exception {
     UUID userId = UUID.randomUUID();
     UUID diaryId = UUID.randomUUID();
-    given(diaryService.submit(eq(userId), any())).willReturn(new DiarySubmitResponse(diaryId));
+    given(diaryService.create(userId)).willReturn(new DiaryCreateResponse(diaryId));
 
     mockMvc
-        .perform(
-            post("/api/v1/diaries")
-                .header(HttpHeaders.AUTHORIZATION, tokens.bearer(userId))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(REQUEST_BODY))
+        .perform(post("/api/v1/diaries").header(HttpHeaders.AUTHORIZATION, tokens.bearer(userId)))
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.diaryId").value(diaryId.toString()));
   }
 
   @Test
-  @DisplayName("access token 없이 제출하면 401 을 반환한다")
-  void submitDiary_헤더없음_401반환() throws Exception {
+  @DisplayName("access token 없이 목록을 조회하면 401 을 반환한다")
+  void getMyDiaries_토큰없음_401반환() throws Exception {
     mockMvc
-        .perform(
-            post("/api/v1/diaries").contentType(MediaType.APPLICATION_JSON).content(REQUEST_BODY))
+        .perform(get("/api/v1/diaries"))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("AUTH_INVALID_TOKEN"));
 
-    verify(diaryService, never()).submit(any(), any());
+    verify(diaryService, never()).getMyDiaries(any());
   }
 
   @Test
-  @DisplayName("pageCount 가 30 을 넘으면 400 과 필드 오류를 반환한다")
-  void submitDiary_페이지수초과_400반환() throws Exception {
-    String body = REQUEST_BODY.replace("\"pageCount\": 12", "\"pageCount\": 31");
+  @DisplayName("이름 변경이 성공하면 204 를 반환한다")
+  void rename_정상_204반환() throws Exception {
+    UUID userId = UUID.randomUUID();
+    UUID diaryId = UUID.randomUUID();
 
     mockMvc
         .perform(
-            post("/api/v1/diaries")
-                .header(HttpHeaders.AUTHORIZATION, tokens.bearer(UUID.randomUUID()))
+            patch("/api/v1/diaries/{diaryId}/name", diaryId)
+                .header(HttpHeaders.AUTHORIZATION, tokens.bearer(userId))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(body))
-        .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.code").value("COMMON_INVALID_REQUEST"))
-        .andExpect(jsonPath("$.fields.pageCount").exists());
+                .content("{\"name\": \"Seoul Trip\"}"))
+        .andExpect(status().isNoContent());
 
-    verify(diaryService, never()).submit(any(), any());
-  }
-
-  @Test
-  @DisplayName("남의 다이어리 상세를 조회하면 404 DIARY_NOT_FOUND 를 반환한다")
-  void getMyDiary_타인다이어리_404반환() throws Exception {
-    UUID userId = UUID.randomUUID();
-    UUID diaryId = UUID.randomUUID();
-    given(diaryService.getMyDiary(userId, diaryId))
-        .willThrow(new BusinessException(ErrorCode.DIARY_NOT_FOUND));
-
-    mockMvc
-        .perform(
-            get("/api/v1/diaries/{diaryId}", diaryId)
-                .header(HttpHeaders.AUTHORIZATION, tokens.bearer(userId)))
-        .andExpect(status().isNotFound())
-        .andExpect(jsonPath("$.code").value("DIARY_NOT_FOUND"));
-  }
-
-  @Test
-  @DisplayName("남의 다이어리 다운로드 URL 을 요청하면 404 DIARY_NOT_FOUND 를 반환한다")
-  void getDownloadUrl_타인다이어리_404반환() throws Exception {
-    UUID userId = UUID.randomUUID();
-    UUID diaryId = UUID.randomUUID();
-    given(diaryService.getDownloadUrl(userId, diaryId))
-        .willThrow(new BusinessException(ErrorCode.DIARY_NOT_FOUND));
-
-    mockMvc
-        .perform(
-            get("/api/v1/diaries/{diaryId}/download", diaryId)
-                .header(HttpHeaders.AUTHORIZATION, tokens.bearer(userId)))
-        .andExpect(status().isNotFound())
-        .andExpect(jsonPath("$.code").value("DIARY_NOT_FOUND"));
+    verify(diaryService).rename(userId, diaryId, "Seoul Trip");
   }
 }

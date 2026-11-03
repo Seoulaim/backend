@@ -43,6 +43,11 @@ app:
   order:
     # 배송비 (원). 서울 단일 권역이라 고정
     shipping-fee: ${ORDER_SHIPPING_FEE:3000}
+  diary:
+    # 유료 다이어리 1권 가격 (원)
+    price: ${DIARY_PRICE:3000}
+    # 첫 무료 다이어리에서 결제 없이 저장할 수 있는 최대 spread 수
+    free-spreads: ${DIARY_FREE_SPREADS:2}
   payment:
     toss:
       # 토스페이먼츠 시크릿 키. 모든 프로파일에서 환경변수 필수 (기본값 없음)

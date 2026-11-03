@@ -6,16 +6,25 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 public interface DiaryRepository extends JpaRepository<Diary, UUID> {
 
-  boolean existsByOrderItemId(UUID orderItemId);
+  // 삭제된 다이어리도 포함해 검사한다 (무료는 계정당 1회)
+  boolean existsByUserIdAndIsFreeTrue(UUID userId);
 
-  List<Diary> findAllByOrderItemIdIn(Collection<UUID> orderItemIds);
+  Optional<Diary> findByIdAndUserIdAndDeletedAtIsNull(UUID id, UUID userId);
 
-  Optional<Diary> findByIdAndUserId(UUID id, UUID userId);
+  /** 내 목록: 삭제되지 않았고 무료이거나 결제된 것만. */
+  @Query(
+      """
+      select d from Diary d
+      where d.userId = :userId and d.deletedAt is null and (d.isFree = true or d.paid = true)
+      order by d.createdAt desc, d.id desc
+      """)
+  List<Diary> findVisibleByUserId(UUID userId);
 
-  List<Diary> findAllByUserIdOrderBySubmittedAtDescIdDesc(UUID userId);
+  List<Diary> findAllByIdIn(Collection<UUID> ids);
 
-  List<Diary> findTop200ByOrderBySubmittedAtDescIdDesc();
+  List<Diary> findTop200ByDeletedAtIsNullOrderByCreatedAtDescIdDesc();
 }

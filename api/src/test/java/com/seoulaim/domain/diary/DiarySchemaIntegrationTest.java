@@ -4,24 +4,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.seoulaim.domain.diary.entity.Diary;
+import com.seoulaim.domain.diary.entity.DiaryPayment;
+import com.seoulaim.domain.diary.entity.DiaryPaymentStatus;
+import com.seoulaim.domain.diary.entity.DiaryStatus;
 import com.seoulaim.domain.diary.entity.DiarySticker;
 import com.seoulaim.domain.diary.entity.DiaryTemplate;
 import com.seoulaim.domain.diary.entity.TemplateFrame;
+import com.seoulaim.domain.diary.repository.DiaryPaymentRepository;
 import com.seoulaim.domain.diary.repository.DiaryRepository;
 import com.seoulaim.domain.diary.repository.DiaryStickerRepository;
 import com.seoulaim.domain.diary.repository.DiaryTemplateRepository;
-import com.seoulaim.domain.file.entity.File;
-import com.seoulaim.domain.file.entity.FileDomain;
-import com.seoulaim.domain.file.repository.FileRepository;
-import com.seoulaim.domain.goods.entity.Product;
-import com.seoulaim.domain.goods.entity.ProductCategory;
-import com.seoulaim.domain.goods.repository.ProductCategoryRepository;
-import com.seoulaim.domain.goods.repository.ProductRepository;
-import com.seoulaim.domain.order.entity.ContactType;
-import com.seoulaim.domain.order.entity.Order;
-import com.seoulaim.domain.order.entity.OrderItem;
-import com.seoulaim.domain.order.repository.OrderItemRepository;
-import com.seoulaim.domain.order.repository.OrderRepository;
+import com.seoulaim.domain.user.entity.User;
+import com.seoulaim.domain.user.repository.UserRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -49,67 +43,112 @@ class DiarySchemaIntegrationTest {
       new PostgreSQLContainer(
           DockerImageName.parse("postgis/postgis:16-3.4").asCompatibleSubstituteFor("postgres"));
 
-  @Autowired private ProductCategoryRepository productCategoryRepository;
-  @Autowired private ProductRepository productRepository;
-  @Autowired private OrderRepository orderRepository;
-  @Autowired private OrderItemRepository orderItemRepository;
-  @Autowired private FileRepository fileRepository;
+  @Autowired private UserRepository userRepository;
   @Autowired private DiaryRepository diaryRepository;
+  @Autowired private DiaryPaymentRepository diaryPaymentRepository;
   @Autowired private DiaryTemplateRepository diaryTemplateRepository;
   @Autowired private DiaryStickerRepository diaryStickerRepository;
   @Autowired private JdbcTemplate jdbcTemplate;
 
   @Test
-  @DisplayName("diary 스키마가 적용된 상태에서 jsonb 편집 데이터를 저장하고 그대로 조회된다")
-  void save_whenSchemaMigrated_contentRoundTrips() {
-    UUID userId = UUID.randomUUID();
-    OrderItem item = saveDiaryOrderItem(userId);
-    File pdf =
-        fileRepository.save(
-            File.createPending(
-                userId, FileDomain.DIARY, "diary/2026/10/a.pdf", "application/pdf", 2048L));
-    Map<String, Object> content =
-        Map.of(
-            "version",
-            1,
-            "pages",
-            List.of(
+  @DisplayName("diary v2 스키마에서 spreads·placePhotos·pageKeys 가 jsonb 로 그대로 저장·조회된다")
+  void save_whenSchemaMigrated_editDataRoundTrips() {
+    UUID userId = saveUser();
+    List<Object> spreads =
+        List.of(
+            Map.of(
+                "templateId",
+                "t1",
+                "left",
                 Map.of(
-                    "templateId",
-                    "t1",
-                    "elements",
-                    List.of(
-                        Map.of("type", "sticker", "x", 12.5, "rotation", -30, "text", "사랑해 ❤")))));
-    Diary diary =
-        diaryRepository.save(
-            Diary.submit(
-                userId,
-                item.getId(),
-                12,
-                content,
-                pdf.getId(),
-                pdf.getS3Key(),
-                Instant.parse("2026-10-29T04:00:00Z")));
+                    "elements", List.of(Map.of("type", "sticker", "x", 12.5, "text", "사랑해 ❤")))));
+    Map<String, Object> placePhotos =
+        Map.of("other", List.of(Map.of("id", UUID.randomUUID().toString(), "key", "diary/a.jpg")));
+    Diary diary = Diary.create(userId, true);
+    diary.saveSpreads(spreads, placePhotos, Instant.parse("2026-11-03T03:00:00Z"));
+    diaryRepository.saveAndFlush(diary);
 
-    Diary found = diaryRepository.findByIdAndUserId(diary.getId(), userId).orElseThrow();
-
-    assertThat(found.getContent()).isEqualTo(content);
-    assertThat(found.getPageCount()).isEqualTo(12);
+    Diary found =
+        diaryRepository.findByIdAndUserIdAndDeletedAtIsNull(diary.getId(), userId).orElseThrow();
+    assertThat(found.getSpreads()).isEqualTo(spreads);
+    assertThat(found.getPlacePhotos()).isEqualTo(placePhotos);
+    assertThat(found.getPageKeys()).isNull();
+    assertThat(found.getStatus()).isEqualTo(DiaryStatus.DRAFT);
     assertThat(found.getId().version()).isEqualTo(7);
-    assertThat(diaryRepository.existsByOrderItemId(item.getId())).isTrue();
-    assertThat(diaryRepository.findByIdAndUserId(diary.getId(), UUID.randomUUID())).isEmpty();
-    assertThat(diaryRepository.findAllByUserIdOrderBySubmittedAtDescIdDesc(userId)).hasSize(1);
+
+    found.finalizeWith(spreads, placePhotos, Instant.parse("2026-11-03T04:00:00Z"));
+    found.completePages(List.of("diary/p1.jpg", "diary/p2.jpg"));
+    diaryRepository.saveAndFlush(found);
+
+    Diary completed = diaryRepository.findById(diary.getId()).orElseThrow();
+    assertThat(completed.getPageKeys()).containsExactly("diary/p1.jpg", "diary/p2.jpg");
+    assertThat(completed.getSpreads()).isEmpty();
+    assertThat(completed.getPlacePhotos()).isEmpty();
+    assertThat(completed.isFinalized()).isTrue();
+  }
+
+  @Test
+  @DisplayName("목록은 삭제되지 않았고 무료이거나 결제된 다이어리만 최신순으로 조회한다 (미결제 유료 제외)")
+  void findVisibleByUserId_whenUnpaidExists_excludesUnpaidAndDeleted() {
+    UUID userId = saveUser();
+    Diary free = diaryRepository.saveAndFlush(Diary.create(userId, true));
+    Diary unpaid = diaryRepository.saveAndFlush(Diary.create(userId, false));
+    Diary paid = Diary.create(userId, false);
+    paid.markPaid();
+    diaryRepository.saveAndFlush(paid);
+    Diary deletedPaid = Diary.create(userId, false);
+    deletedPaid.markPaid();
+    deletedPaid.delete(Instant.parse("2026-11-03T03:00:00Z"));
+    diaryRepository.saveAndFlush(deletedPaid);
+
+    assertThat(diaryRepository.findVisibleByUserId(userId))
+        .extracting(Diary::getId)
+        .containsExactly(paid.getId(), free.getId());
+    assertThat(diaryRepository.findByIdAndUserIdAndDeletedAtIsNull(unpaid.getId(), userId))
+        .isPresent();
+    assertThat(diaryRepository.findByIdAndUserIdAndDeletedAtIsNull(deletedPaid.getId(), userId))
+        .isEmpty();
+  }
+
+  @Test
+  @DisplayName("무료 다이어리 이력은 soft delete 후에도 남고, 사용자당 무료 다이어리는 하나만 저장된다")
+  void existsByUserIdAndIsFreeTrue_whenDeleted_stillTrue() {
+    UUID userId = saveUser();
+    assertThat(diaryRepository.existsByUserIdAndIsFreeTrue(userId)).isFalse();
+    Diary free = Diary.create(userId, true);
+    free.delete(Instant.parse("2026-11-03T03:00:00Z"));
+    diaryRepository.saveAndFlush(free);
+
+    assertThat(diaryRepository.existsByUserIdAndIsFreeTrue(userId)).isTrue();
+    assertThatThrownBy(() -> diaryRepository.saveAndFlush(Diary.create(userId, true)))
+        .isInstanceOf(DataIntegrityViolationException.class);
+  }
+
+  @Test
+  @DisplayName("최신 PAID 결제 조회는 paid_at 이 가장 늦은 결제를 고르고, order_number 는 unique 다")
+  void findFirstPaid_whenMultiplePaid_returnsLatest() {
+    UUID userId = saveUser();
+    Diary diary = diaryRepository.saveAndFlush(Diary.create(userId, false));
+    DiaryPayment older = payment(diary, "DIA-20261101-OLDER00001");
+    older.markPaid("pk_old", Instant.parse("2026-11-01T00:00:00Z"));
+    DiaryPayment latest = payment(diary, "DIA-20261102-LATEST0001");
+    latest.markPaid("pk_new", Instant.parse("2026-11-02T00:00:00Z"));
+    DiaryPayment pending = payment(diary, "DIA-20261103-PENDING001");
+    diaryPaymentRepository.saveAllAndFlush(List.of(latest, older, pending));
+
+    assertThat(
+            diaryPaymentRepository.findFirstByDiaryIdAndStatusOrderByPaidAtDescIdDesc(
+                diary.getId(), DiaryPaymentStatus.PAID))
+        .get()
+        .extracting(DiaryPayment::getId)
+        .isEqualTo(latest.getId());
+    assertThat(
+            diaryPaymentRepository.findAllByUserIdAndStatusInOrderByPaidAtDescIdDesc(
+                userId, List.of(DiaryPaymentStatus.PAID, DiaryPaymentStatus.REFUNDED)))
+        .extracting(DiaryPayment::getId)
+        .containsExactly(latest.getId(), older.getId());
     assertThatThrownBy(
-            () ->
-                diaryRepository.saveAndFlush(
-                    Diary.submit(
-                        userId,
-                        item.getId(),
-                        1,
-                        Map.of(),
-                        pdf.getId(),
-                        pdf.getS3Key(),
-                        Instant.parse("2026-10-29T05:00:00Z"))))
+            () -> diaryPaymentRepository.saveAndFlush(payment(diary, "DIA-20261103-PENDING001")))
         .isInstanceOf(DataIntegrityViolationException.class);
   }
 
@@ -180,26 +219,18 @@ class DiarySchemaIntegrationTest {
     assertThat(found.getOverlayImageKey()).isNull();
   }
 
-  private OrderItem saveDiaryOrderItem(UUID userId) {
-    ProductCategory category = productCategoryRepository.save(ProductCategory.create("Diary", 0));
-    Product product =
-        productRepository.save(
-            Product.create(category, UUID.randomUUID(), null, "Diary", null, null, 25000L, true));
-    Order order =
-        orderRepository.save(
-            Order.createPending(
-                "ORD-20261029-DI4RY1",
-                userId,
-                25000L,
-                3000L,
-                "Kim",
-                "서울특별시 중구 세종대로 110",
-                null,
-                null,
-                ContactType.NONE,
-                null,
-                Instant.parse("2026-10-29T03:00:00Z")));
-    return orderItemRepository.save(
-        OrderItem.create(order.getId(), product.getId(), "Diary", 25000L, 1));
+  private UUID saveUser() {
+    return userRepository
+        .save(User.createWithEmail(UUID.randomUUID() + "@test.com", "hash", "tester"))
+        .getId();
+  }
+
+  private static DiaryPayment payment(Diary diary, String orderNumber) {
+    return DiaryPayment.createPending(
+        diary.getId(),
+        diary.getUserId(),
+        orderNumber,
+        3000L,
+        Instant.parse("2026-11-01T00:00:00Z"));
   }
 }
