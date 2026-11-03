@@ -3,11 +3,14 @@ package com.seoulaim.domain.diary.admin.controller;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.seoulaim.domain.diary.admin.dto.AdminDiarySummaryResponse;
 import com.seoulaim.domain.diary.admin.dto.AdminDiaryTemplateResponse;
+import com.seoulaim.domain.diary.entity.Diary;
 import com.seoulaim.domain.diary.entity.TemplateFrame;
 import com.seoulaim.domain.diary.service.DiaryAssetService;
 import com.seoulaim.domain.diary.service.DiaryService;
@@ -105,5 +108,24 @@ class AdminDiaryControllerTest {
                     """))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("DIARY_STICKER_NOT_FOUND"));
+  }
+
+  @Test
+  @DisplayName("관리자 다이어리 목록은 새 모델 필드(id, userId, name, free, paid, status ...)를 반환한다")
+  void getDiaries_정상_새모델필드반환() throws Exception {
+    UUID userId = UUID.randomUUID();
+    Diary diary = Diary.create(userId, true);
+    given(diaryService.getAdminDiaries())
+        .willReturn(List.of(AdminDiarySummaryResponse.from(diary)));
+
+    mockMvc
+        .perform(get("/api/v1/admin/diaries").header("X-Admin-Key", ADMIN_KEY))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].id").value(diary.getId().toString()))
+        .andExpect(jsonPath("$[0].userId").value(userId.toString()))
+        .andExpect(jsonPath("$[0].name").value("My Diary"))
+        .andExpect(jsonPath("$[0].free").value(true))
+        .andExpect(jsonPath("$[0].paid").value(false))
+        .andExpect(jsonPath("$[0].status").value("DRAFT"));
   }
 }
