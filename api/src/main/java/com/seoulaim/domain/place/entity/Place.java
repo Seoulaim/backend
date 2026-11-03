@@ -98,6 +98,28 @@ public class Place extends BaseEntity {
     return place;
   }
 
+  // 어드민 수정. 전체 교체
+  public void update(
+      String name,
+      PlaceCategory category,
+      boolean visible,
+      String address,
+      Point location,
+      String district,
+      int avgStayMinutes,
+      String phone,
+      String homepageUrl) {
+    this.name = name;
+    this.category = category;
+    this.visible = visible;
+    this.address = address;
+    this.location = location;
+    this.district = district;
+    this.avgStayMinutes = avgStayMinutes;
+    this.phone = phone;
+    this.homepageUrl = homepageUrl;
+  }
+
   public void changeVisibility(boolean visible) {
     this.visible = visible;
   }

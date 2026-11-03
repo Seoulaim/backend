@@ -11,4 +11,6 @@ public interface KeywordRepository extends JpaRepository<Keyword, UUID> {
   List<Keyword> findAllByOrderByDisplayOrderAscIdAsc();
 
   long countByIdIn(Collection<UUID> ids);
+
+  List<Keyword> findAllByCodeIn(Collection<String> codes);
 }

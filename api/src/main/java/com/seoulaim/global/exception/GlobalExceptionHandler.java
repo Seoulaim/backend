@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -70,6 +71,21 @@ public class GlobalExceptionHandler {
                 errorCode.getCode(),
                 errorCode.getMessage(),
                 Map.of(exception.getParameterName(), "필수 파라미터입니다"),
+                MDC.get("traceId")));
+  }
+
+  // JSON 형식 오류, enum 에 없는 값 등 본문 해석 실패
+  @ExceptionHandler(HttpMessageNotReadableException.class)
+  public ResponseEntity<ErrorResponse> handleNotReadableException(
+      HttpMessageNotReadableException exception) {
+    ErrorCode errorCode = ErrorCode.COMMON_INVALID_REQUEST;
+
+    return ResponseEntity.status(errorCode.getStatus())
+        .body(
+            new ErrorResponse(
+                errorCode.getCode(),
+                errorCode.getMessage(),
+                Collections.emptyMap(),
                 MDC.get("traceId")));
   }
 

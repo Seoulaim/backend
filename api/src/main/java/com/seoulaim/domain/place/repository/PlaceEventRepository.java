@@ -6,6 +6,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -35,4 +36,11 @@ public interface PlaceEventRepository extends JpaRepository<PlaceEvent, UUID> {
   // 운영 기간이 있는(기간 한정) 장소 ID
   @Query("SELECT DISTINCT e.place.id FROM PlaceEvent e WHERE e.place.id IN :placeIds")
   List<UUID> findPlaceIdsHavingEvents(@Param("placeIds") Collection<UUID> placeIds);
+
+  // 최근 시작한 이벤트부터
+  List<PlaceEvent> findAllByPlaceIdInOrderByStartsOnDescIdDesc(Collection<UUID> placeIds);
+
+  @Modifying(flushAutomatically = true)
+  @Query("DELETE FROM PlaceEvent e WHERE e.place.id = :placeId")
+  void deleteAllByPlaceId(@Param("placeId") UUID placeId);
 }

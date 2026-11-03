@@ -15,7 +15,7 @@ public interface PlaceOpeningHourRepository extends JpaRepository<PlaceOpeningHo
 
   List<PlaceOpeningHour> findAllByPlaceIdIn(Collection<UUID> placeIds);
 
-  @Modifying(clearAutomatically = true, flushAutomatically = true)
+  @Modifying(flushAutomatically = true)
   @Query("DELETE FROM PlaceOpeningHour h WHERE h.place.id = :placeId")
   void deleteAllByPlaceId(@Param("placeId") UUID placeId);
 }
