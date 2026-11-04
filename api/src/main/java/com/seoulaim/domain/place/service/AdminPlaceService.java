@@ -41,7 +41,6 @@ import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
-import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -263,7 +262,7 @@ public class AdminPlaceService {
     }
   }
 
-  // MON ~ SUN 7개, 휴무일은 시각 없음, 영업일은 여는 시각 < (브레이크) < 닫는 시각
+  // MON ~ SUN 7개, 휴무일은 시각 없음, 영업일은 OpeningHours.isValid (자정 넘김·브레이크 범위)
   private boolean isValidOpeningHours(List<AdminPlaceOpeningHourRequest> hours) {
     Set<Weekday> days =
         hours.stream().map(AdminPlaceOpeningHourRequest::dayOfWeek).collect(Collectors.toSet());
@@ -278,22 +277,8 @@ public class AdminPlaceService {
             || hour.breakEndsAt() != null) {
           return false;
         }
-        continue;
-      }
-      LocalTime opensAt = hour.opensAt();
-      LocalTime closesAt = hour.closesAt();
-      if (opensAt == null || closesAt == null || !opensAt.isBefore(closesAt)) {
-        return false;
-      }
-      LocalTime breakStartsAt = hour.breakStartsAt();
-      LocalTime breakEndsAt = hour.breakEndsAt();
-      if ((breakStartsAt == null) != (breakEndsAt == null)) {
-        return false;
-      }
-      if (breakStartsAt != null
-          && !(opensAt.isBefore(breakStartsAt)
-              && breakStartsAt.isBefore(breakEndsAt)
-              && breakEndsAt.isBefore(closesAt))) {
+      } else if (!OpeningHours.isValid(
+          hour.opensAt(), hour.closesAt(), hour.breakStartsAt(), hour.breakEndsAt())) {
         return false;
       }
     }
