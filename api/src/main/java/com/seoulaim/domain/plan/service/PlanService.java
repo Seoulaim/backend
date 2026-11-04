@@ -13,6 +13,7 @@ import com.seoulaim.domain.place.service.KeywordService;
 import com.seoulaim.domain.place.service.PlaceService;
 import com.seoulaim.domain.plan.dto.CreatePlanRequest;
 import com.seoulaim.domain.plan.dto.PlanDetailResponse;
+import com.seoulaim.domain.plan.dto.PlanSnapshot;
 import com.seoulaim.domain.plan.dto.PlanSummaryResponse;
 import com.seoulaim.domain.plan.dto.RecommendDatesRequest;
 import com.seoulaim.domain.plan.dto.RecommendDatesResponse;
@@ -39,6 +40,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -207,6 +209,31 @@ public class PlanService {
         itemsByDayId,
         placeService.findImageKeysByPlaceIds(placeIds),
         placeService.findArtistPlacesByPlaceIds(placeIds));
+  }
+
+  // 만족도 조사(survey) 도메인용: 일정 보유 여부, 최신 일정 요약, 일정 보유 사용자 수
+  public boolean hasPlan(UUID userId) {
+    return travelPlanRepository.existsByUserId(userId);
+  }
+
+  public Optional<PlanSnapshot> findLatestPlanSnapshot(UUID userId) {
+    return travelPlanRepository
+        .findFirstByUserIdOrderByIdDesc(userId)
+        .map(
+            plan -> {
+              int dayCount =
+                  planDayRepository.countByPlanIds(List.of(plan.getId())).stream()
+                      .findFirst()
+                      .map(row -> ((Long) row[1]).intValue())
+                      .orElse(0);
+              int placeCount = (int) planItemRepository.countDistinctPlacesByPlanId(plan.getId());
+              return new PlanSnapshot(
+                  plan.getId(), plan.getStartDate(), plan.getEndDate(), dayCount, placeCount);
+            });
+  }
+
+  public long countPlanCreators() {
+    return travelPlanRepository.countDistinctUsers();
   }
 
   @Transactional
