@@ -4,8 +4,10 @@ import com.seoulaim.domain.auth.dto.ConfirmEmailVerificationRequest;
 import com.seoulaim.domain.auth.dto.ConfirmEmailVerificationResponse;
 import com.seoulaim.domain.auth.dto.LoginRequest;
 import com.seoulaim.domain.auth.dto.RefreshTokenRequest;
+import com.seoulaim.domain.auth.dto.ResetPasswordRequest;
 import com.seoulaim.domain.auth.dto.SendEmailVerificationRequest;
 import com.seoulaim.domain.auth.dto.SendEmailVerificationResponse;
+import com.seoulaim.domain.auth.dto.SendPasswordResetCodeRequest;
 import com.seoulaim.domain.auth.dto.SignupRequest;
 import com.seoulaim.domain.auth.dto.TokenResponse;
 import com.seoulaim.domain.auth.service.AuthService;
@@ -75,5 +77,20 @@ public class AuthController {
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void logout(@CurrentUserId UUID userId, @Valid @RequestBody RefreshTokenRequest request) {
     authService.logout(userId, request.refreshToken());
+  }
+
+  // 미가입 이메일도 같은 응답 (가입 여부 비노출)
+  @Operation(summary = "비밀번호 재설정 인증번호 발송")
+  @PostMapping("/password-reset/codes")
+  public SendEmailVerificationResponse sendPasswordResetCode(
+      @Valid @RequestBody SendPasswordResetCodeRequest request) {
+    return emailVerificationService.sendPasswordResetCode(request.email());
+  }
+
+  @Operation(summary = "비밀번호 재설정")
+  @PostMapping("/password-reset")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+    authService.resetPassword(request.email(), request.code(), request.newPassword());
   }
 }

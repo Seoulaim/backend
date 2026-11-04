@@ -14,6 +14,8 @@ import com.seoulaim.domain.auth.config.EmailVerificationProperties;
 import com.seoulaim.domain.auth.dto.ConfirmEmailVerificationResponse;
 import com.seoulaim.domain.auth.dto.SendEmailVerificationResponse;
 import com.seoulaim.domain.auth.repository.EmailVerificationRedisRepository;
+import com.seoulaim.domain.auth.repository.VerificationPurpose;
+import com.seoulaim.domain.user.entity.User;
 import com.seoulaim.domain.user.service.UserService;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
@@ -25,6 +27,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
@@ -160,5 +163,71 @@ class EmailVerificationServiceTest {
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.AUTH_EMAIL_NOT_VERIFIED);
+  }
+
+  @Test
+  @DisplayName("가입된 이메일이면 PASSWORD_RESET 용도로 인증번호를 저장하고 재설정 메일을 보낸다")
+  void sendPasswordResetCode_가입이메일_발송() {
+    VerificationPurpose purpose = VerificationPurpose.PASSWORD_RESET;
+    given(repository.tryAcquireResendCooldown(purpose, EMAIL, Duration.ofSeconds(60)))
+        .willReturn(true);
+    given(userService.findByEmail(EMAIL))
+        .willReturn(Optional.of(User.createWithEmail(EMAIL, "hash", "Luna")));
+
+    SendEmailVerificationResponse response = service.sendPasswordResetCode("Luna@Example.com");
+
+    verify(repository).saveCode(eq(purpose), eq(EMAIL), anyString(), eq(Duration.ofMinutes(5)));
+    verify(emailSender).send(eq(EMAIL), eq("[Seoulaim] Password reset code"), anyString());
+    assertThat(response.expiresInSeconds()).isEqualTo(300);
+    assertThat(response.resendAvailableInSeconds()).isEqualTo(60);
+  }
+
+  @Test
+  @DisplayName("미가입 이메일이어도 같은 응답을 주고 인증번호 저장·메일 발송은 하지 않는다")
+  void sendPasswordResetCode_미가입이메일_같은응답() {
+    VerificationPurpose purpose = VerificationPurpose.PASSWORD_RESET;
+    given(repository.tryAcquireResendCooldown(purpose, EMAIL, Duration.ofSeconds(60)))
+        .willReturn(true);
+    given(userService.findByEmail(EMAIL)).willReturn(Optional.empty());
+
+    SendEmailVerificationResponse response = service.sendPasswordResetCode(EMAIL);
+
+    verify(repository, never())
+        .saveCode(any(VerificationPurpose.class), anyString(), anyString(), any());
+    verify(emailSender, never()).send(anyString(), anyString(), anyString());
+    assertThat(response.expiresInSeconds()).isEqualTo(300);
+    assertThat(response.resendAvailableInSeconds()).isEqualTo(60);
+  }
+
+  @Test
+  @DisplayName("가입 인증번호(SIGNUP)만 있으면 재설정 확인은 AUTH_OTP_EXPIRED (용도 분리)")
+  void consumePasswordResetCode_가입코드_재설정불가() {
+    Mockito.lenient().when(repository.findCode(EMAIL)).thenReturn(Optional.of("123456"));
+    Mockito.lenient()
+        .when(repository.findCode(VerificationPurpose.SIGNUP, EMAIL))
+        .thenReturn(Optional.of("123456"));
+    given(repository.findCode(VerificationPurpose.PASSWORD_RESET, EMAIL))
+        .willReturn(Optional.empty());
+
+    assertThatThrownBy(() -> service.consumePasswordResetCode(EMAIL, "123456"))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.AUTH_OTP_EXPIRED);
+  }
+
+  @Test
+  @DisplayName("재설정 인증번호가 틀리면 AUTH_OTP_MISMATCH, 맞으면 PASSWORD_RESET 인증번호를 삭제한다")
+  void consumePasswordResetCode_일치여부_처리() {
+    VerificationPurpose purpose = VerificationPurpose.PASSWORD_RESET;
+    given(repository.findCode(purpose, EMAIL)).willReturn(Optional.of("123456"));
+    given(repository.increaseAttempts(purpose, EMAIL, Duration.ofMinutes(5))).willReturn(1L);
+
+    assertThatThrownBy(() -> service.consumePasswordResetCode(EMAIL, "000000"))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.AUTH_OTP_MISMATCH);
+
+    service.consumePasswordResetCode(EMAIL, "123456");
+    verify(repository).deleteCode(purpose, EMAIL);
   }
 }

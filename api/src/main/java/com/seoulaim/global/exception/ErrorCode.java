@@ -27,6 +27,8 @@ public enum ErrorCode {
   AUTH_OTP_ATTEMPTS_EXCEEDED(
       HttpStatus.TOO_MANY_REQUESTS, "AUTH_OTP_ATTEMPTS_EXCEEDED", "인증 시도 횟수를 초과했습니다. 다시 요청해주세요"),
   AUTH_EMAIL_NOT_VERIFIED(HttpStatus.BAD_REQUEST, "AUTH_EMAIL_NOT_VERIFIED", "이메일 인증이 필요합니다"),
+  AUTH_INVALID_PASSWORD(
+      HttpStatus.BAD_REQUEST, "AUTH_INVALID_PASSWORD", "비밀번호는 8~64자, 영문·숫자를 각 1자 이상 포함해야 합니다"),
   AUTH_MAIL_SEND_FAILED(
       HttpStatus.SERVICE_UNAVAILABLE, "AUTH_MAIL_SEND_FAILED", "인증 메일 발송에 실패했습니다"),
 

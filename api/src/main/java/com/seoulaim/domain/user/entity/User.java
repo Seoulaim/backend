@@ -111,4 +111,9 @@ public class User extends BaseEntity {
     this.marketingEnabled = marketingEnabled;
     this.marketingUpdatedAt = now;
   }
+
+  // bcrypt 해시. 비밀번호 규칙 검증은 호출 전 서비스에서
+  public void changePasswordHash(String passwordHash) {
+    this.passwordHash = passwordHash;
+  }
 }

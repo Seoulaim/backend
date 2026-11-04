@@ -107,6 +107,11 @@ public class UserService {
     return true;
   }
 
+  @Transactional
+  public void changePassword(UUID userId, String passwordHash) {
+    getActiveUser(userId).changePasswordHash(passwordHash);
+  }
+
   public NotificationSettingsResponse getNotificationSettings(UUID userId) {
     return NotificationSettingsResponse.from(getActiveUser(userId));
   }
