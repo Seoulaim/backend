@@ -1,6 +1,6 @@
 package com.seoulaim.domain.place.admin.dto;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.seoulaim.domain.place.entity.PlaceCategory;
 import com.seoulaim.domain.place.entity.Weekday;
 import jakarta.validation.Valid;
@@ -21,7 +21,8 @@ import java.util.UUID;
  * <ul>
  *   <li>imageKeys: 어드민 파일 업로드(domain PLACE)로 받은 s3 key, 배열 순서 = 노출 순서 (첫 번째가 대표)
  *   <li>operatingPeriod: null 이면 상시 운영
- *   <li>openingHours: null 이면 영업시간 없음, 있으면 MON ~ SUN 7개
+ *   <li>openingHours: null 이면 영업시간 없음, 있으면 MON ~ SUN 7개. 시각 "HH:mm", "24:00" = 00:00. closesAt ≤
+ *       opensAt 이면 다음 날 closesAt 까지 (자정 넘김), 브레이크는 영업 구간 안
  *   <li>artists[].artistId: null 이면 그룹 단위 연결
  * </ul>
  */
@@ -50,10 +51,10 @@ public record AdminPlaceRequest(
   public record AdminPlaceOpeningHourRequest(
       @NotNull Weekday dayOfWeek,
       @NotNull Boolean closed,
-      @JsonFormat(pattern = "HH:mm") LocalTime opensAt,
-      @JsonFormat(pattern = "HH:mm") LocalTime closesAt,
-      @JsonFormat(pattern = "HH:mm") LocalTime breakStartsAt,
-      @JsonFormat(pattern = "HH:mm") LocalTime breakEndsAt) {}
+      @JsonDeserialize(using = OpeningTimeDeserializer.class) LocalTime opensAt,
+      @JsonDeserialize(using = OpeningTimeDeserializer.class) LocalTime closesAt,
+      @JsonDeserialize(using = OpeningTimeDeserializer.class) LocalTime breakStartsAt,
+      @JsonDeserialize(using = OpeningTimeDeserializer.class) LocalTime breakEndsAt) {}
 
   public record AdminPlaceArtistRequest(
       @NotNull UUID artistGroupId, UUID artistId, @Size(max = 500) String description) {}

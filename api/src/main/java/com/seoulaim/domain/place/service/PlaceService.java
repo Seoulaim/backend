@@ -89,21 +89,12 @@ public class PlaceService {
       isOpenNow = true;
     } else {
       Weekday today = Weekday.from(now.getDayOfWeek());
-      PlaceOpeningHour todayHour =
-          weeklyHours.stream()
-              .filter(hour -> hour.getDayOfWeek() == today && !hour.isClosed())
-              .findFirst()
-              .orElse(null);
+      Weekday yesterday = Weekday.from(now.minusDays(1).getDayOfWeek());
+      PlaceOpeningHour todayHour = openHourOn(weeklyHours, today);
       opensAt = todayHour == null ? null : todayHour.getOpensAt();
       closesAt = todayHour == null ? null : todayHour.getClosesAt();
-      isOpenNow =
-          todayHour != null
-              && OpeningHours.isOpen(
-                  opensAt,
-                  closesAt,
-                  todayHour.getBreakStartsAt(),
-                  todayHour.getBreakEndsAt(),
-                  time);
+      // 어제 자정 넘김 영업의 새벽 부분도 영업 중
+      isOpenNow = OpeningHours.isOpenNow(todayHour, openHourOn(weeklyHours, yesterday), time);
     }
 
     List<String> imageKeys =
@@ -179,5 +170,13 @@ public class PlaceService {
     }
     return artistPlaceRepository.findAllWithArtistByPlaceIdIn(placeIds).stream()
         .collect(Collectors.groupingBy(artistPlace -> artistPlace.getPlace().getId()));
+  }
+
+  // 해당 요일의 영업 행 (휴무·없음이면 null)
+  private static PlaceOpeningHour openHourOn(List<PlaceOpeningHour> hours, Weekday day) {
+    return hours.stream()
+        .filter(hour -> hour.getDayOfWeek() == day && !hour.isClosed())
+        .findFirst()
+        .orElse(null);
   }
 }

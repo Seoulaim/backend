@@ -241,18 +241,24 @@ class AdminPlaceIntegrationTest {
   }
 
   @Test
-  @DisplayName("영업시간 요일이 7개가 아니거나 시각 순서가 틀리면 PLACE_INVALID_OPENING_HOURS 예외가 발생한다")
+  @DisplayName("영업시간 요일이 7개가 아니거나 브레이크가 영업 구간 밖이면 PLACE_INVALID_OPENING_HOURS 예외가 발생한다")
   void createPlace_잘못된영업시간_예외() {
     List<AdminPlaceOpeningHourRequest> sixDays = dailyHours().subList(0, 6);
-    List<AdminPlaceOpeningHourRequest> reversed =
+    // 22:00 ~ 다음 날 10:00 영업에 브레이크가 마감 뒤 (자정 넘김 자체는 허용)
+    List<AdminPlaceOpeningHourRequest> breakOutside =
         Arrays.stream(Weekday.values())
             .map(
                 day ->
                     new AdminPlaceOpeningHourRequest(
-                        day, false, LocalTime.of(22, 0), LocalTime.of(10, 0), null, null))
+                        day,
+                        false,
+                        LocalTime.of(22, 0),
+                        LocalTime.of(10, 0),
+                        LocalTime.of(9, 30),
+                        LocalTime.of(11, 0)))
             .toList();
 
-    for (List<AdminPlaceOpeningHourRequest> hours : List.of(sixDays, reversed)) {
+    for (List<AdminPlaceOpeningHourRequest> hours : List.of(sixDays, breakOutside)) {
       assertThatThrownBy(
               () ->
                   adminPlaceService.createPlace(
