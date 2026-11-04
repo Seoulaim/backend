@@ -6,12 +6,14 @@ import com.seoulaim.domain.user.dto.UpdateNotificationSettingsRequest;
 import com.seoulaim.domain.user.dto.UpdateProfileRequest;
 import com.seoulaim.domain.user.dto.UserResponse;
 import com.seoulaim.domain.user.service.UserService;
+import com.seoulaim.domain.user.service.UserWithdrawalService;
 import com.seoulaim.global.common.CurrentUserId;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -25,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserController {
 
   private final UserService userService;
+  private final UserWithdrawalService userWithdrawalService;
 
   @Operation(summary = "내 정보 조회")
   @GetMapping("/me")
@@ -58,5 +61,12 @@ public class UserController {
   public void updateLanguage(
       @CurrentUserId UUID userId, @Valid @RequestBody UpdateLanguageRequest request) {
     userService.updateLanguage(userId, request.language());
+  }
+
+  @Operation(summary = "회원 탈퇴")
+  @DeleteMapping("/me")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void withdraw(@CurrentUserId UUID userId) {
+    userWithdrawalService.withdraw(userId);
   }
 }

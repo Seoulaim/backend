@@ -92,6 +92,21 @@ public class UserService {
     return UserResponse.from(user);
   }
 
+  /**
+   * 탈퇴 처리 (이메일·비밀번호 삭제, 상태 WITHDRAWN).
+   *
+   * @return 이번 호출로 탈퇴했으면 true, 이미 탈퇴한 회원이면 false
+   */
+  @Transactional
+  public boolean withdraw(UUID userId) {
+    User user = getUser(userId);
+    if (user.isWithdrawn()) {
+      return false;
+    }
+    user.withdraw(clock.instant());
+    return true;
+  }
+
   public NotificationSettingsResponse getNotificationSettings(UUID userId) {
     return NotificationSettingsResponse.from(getActiveUser(userId));
   }

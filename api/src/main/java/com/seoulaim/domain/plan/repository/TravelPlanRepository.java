@@ -20,6 +20,8 @@ public interface TravelPlanRepository extends JpaRepository<TravelPlan, UUID> {
 
   boolean existsByUserId(UUID userId);
 
+  List<TravelPlan> findAllByUserId(UUID userId);
+
   // UUID v7 → id 가 가장 큰 일정 = 가장 최근에 만든 일정
   Optional<TravelPlan> findFirstByUserIdOrderByIdDesc(UUID userId);
 

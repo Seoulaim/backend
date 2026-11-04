@@ -75,6 +75,12 @@ public class UserBiasService {
     return artistIds.stream().map(id -> toResponse(artists.get(id))).toList();
   }
 
+  // 회원 탈퇴용. 벌크 delete 가 영속성 컨텍스트를 비우므로 호출 후 엔티티는 다시 조회
+  @Transactional
+  public void deleteAllBiasesOfUser(UUID userId) {
+    userBiasRepository.deleteAllByUserId(userId);
+  }
+
   private ArtistWithGroupResponse toResponse(Artist artist) {
     return ArtistWithGroupResponse.of(artist, artist.getArtistGroup());
   }

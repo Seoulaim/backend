@@ -85,6 +85,11 @@ public class AuthService {
     }
   }
 
+  // 탈퇴·비밀번호 재설정 시 호출. 이미 발급된 access token 은 만료 시까지 유효
+  public void revokeAllRefreshTokens(UUID userId) {
+    refreshTokenRedisRepository.deleteAllByUserId(userId);
+  }
+
   private TokenResponse issueTokens(UUID userId) {
     IssuedToken accessToken = jwtTokenProvider.issueAccessToken(userId);
     IssuedToken refreshToken = jwtTokenProvider.issueRefreshToken(userId);
