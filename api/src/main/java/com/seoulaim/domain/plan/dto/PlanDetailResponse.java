@@ -3,6 +3,7 @@ package com.seoulaim.domain.plan.dto;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.seoulaim.domain.place.dto.PlaceDetailResponse.Location;
 import com.seoulaim.domain.place.entity.ArtistPlace;
+import com.seoulaim.domain.place.entity.LocalizedText;
 import com.seoulaim.domain.place.entity.Place;
 import com.seoulaim.domain.plan.entity.PlanDay;
 import com.seoulaim.domain.plan.entity.PlanItem;
@@ -33,9 +34,12 @@ public record PlanDetailResponse(
       @JsonFormat(pattern = "HH:mm") LocalTime arrivalTime,
       PlanPlaceResponse place) {}
 
+  // name·address: 한국어(없으면 영어) 기본 표시값, names·summaries: 언어별 이름·주제
   public record PlanPlaceResponse(
       UUID id,
       String name,
+      LocalizedText names,
+      LocalizedText summaries,
       String address,
       Location location,
       List<String> imageKeys,
@@ -87,6 +91,8 @@ public record PlanDetailResponse(
         new PlanPlaceResponse(
             place.getId(),
             place.getName(),
+            place.getNames(),
+            place.getSummaries(),
             place.getAddress(),
             new Location(place.getLocation().getY(), place.getLocation().getX()),
             imageKeysByPlaceId.getOrDefault(place.getId(), List.of()),

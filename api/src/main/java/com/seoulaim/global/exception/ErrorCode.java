@@ -47,6 +47,11 @@ public enum ErrorCode {
   // PLACE
   PLACE_NOT_FOUND(HttpStatus.NOT_FOUND, "PLACE_NOT_FOUND", "장소를 찾을 수 없습니다"),
   PLACE_KEYWORD_NOT_FOUND(HttpStatus.NOT_FOUND, "PLACE_KEYWORD_NOT_FOUND", "키워드를 찾을 수 없습니다"),
+  PLACE_KEYWORD_DUPLICATED(HttpStatus.CONFLICT, "PLACE_KEYWORD_DUPLICATED", "이미 있는 키워드 코드입니다"),
+  PLACE_KEYWORD_INVALID_CODE(
+      HttpStatus.BAD_REQUEST, "PLACE_KEYWORD_INVALID_CODE", "영어 이름으로 키워드 코드를 만들 수 없습니다"),
+  PLACE_KEYWORD_INVALID_ORDER(
+      HttpStatus.BAD_REQUEST, "PLACE_KEYWORD_INVALID_ORDER", "모든 키워드를 한 번씩 포함해야 합니다"),
   PLACE_INVALID_CURSOR(HttpStatus.BAD_REQUEST, "PLACE_INVALID_CURSOR", "잘못된 커서 값입니다"),
   PLACE_IN_USE(HttpStatus.CONFLICT, "PLACE_IN_USE", "일정에 포함된 장소는 삭제할 수 없습니다"),
   PLACE_INVALID_OPERATING_PERIOD(

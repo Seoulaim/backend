@@ -19,33 +19,33 @@ VALUES
     ON CONFLICT (id) DO NOTHING;
 
 -- 키워드 (HC05 칩 순서)
-INSERT INTO keywords (id, code, display_order, created_at, updated_at)
+INSERT INTO keywords (id, code, name_en, name_ko, display_order, created_at, updated_at)
 VALUES
-    ('01a00000-0000-7000-8000-000000002001', 'CAFE', 0, now(), now()),
-    ('01a00000-0000-7000-8000-000000002002', 'RESTAURANT', 1, now(), now()),
-    ('01a00000-0000-7000-8000-000000002003', 'PHOTO_SPOT', 2, now(), now()),
-    ('01a00000-0000-7000-8000-000000002004', 'ALBUM_SHOOTING_SITE', 3, now(), now()),
-    ('01a00000-0000-7000-8000-000000002005', 'CONCERT_HALL', 4, now(), now()),
-    ('01a00000-0000-7000-8000-000000002006', 'POPUP_STORE', 5, now(), now()),
-    ('01a00000-0000-7000-8000-000000002007', 'BIRTHDAY_CAFE', 6, now(), now()),
-    ('01a00000-0000-7000-8000-000000002008', 'GOODS_SHOP', 7, now(), now()),
-    ('01a00000-0000-7000-8000-000000002009', 'DRAMA_FILMING_SITE', 8, now(), now()),
-    ('01a00000-0000-7000-8000-000000002010', 'MV_FILMING_SITE', 9, now(), now()),
-    ('01a00000-0000-7000-8000-000000002011', 'PARK', 10, now(), now()),
-    ('01a00000-0000-7000-8000-000000002012', 'SHOPPING', 11, now(), now()),
-    ('01a00000-0000-7000-8000-000000002013', 'EXHIBITION', 12, now(), now()),
-    ('01a00000-0000-7000-8000-000000002014', 'MUSEUM', 13, now(), now()),
-    ('01a00000-0000-7000-8000-000000002015', 'NIGHT_VIEW', 14, now(), now()),
-    ('01a00000-0000-7000-8000-000000002016', 'HEALING', 15, now(), now()),
-    ('01a00000-0000-7000-8000-000000002017', 'ETC', 16, now(), now())
+    ('01a00000-0000-7000-8000-000000002001', 'CAFE', 'Cafe', '카페', 0, now(), now()),
+    ('01a00000-0000-7000-8000-000000002002', 'RESTAURANT', 'Restaurant', '맛집', 1, now(), now()),
+    ('01a00000-0000-7000-8000-000000002003', 'PHOTO_SPOT', 'Photo Spot', '포토스팟', 2, now(), now()),
+    ('01a00000-0000-7000-8000-000000002004', 'ALBUM_SHOOTING_SITE', 'Album Shooting Site', '앨범 촬영지', 3, now(), now()),
+    ('01a00000-0000-7000-8000-000000002005', 'CONCERT_HALL', 'Concert Hall', '공연장', 4, now(), now()),
+    ('01a00000-0000-7000-8000-000000002006', 'POPUP_STORE', 'Pop-up Store', '팝업스토어', 5, now(), now()),
+    ('01a00000-0000-7000-8000-000000002007', 'BIRTHDAY_CAFE', 'Birthday Cafe', '생일카페', 6, now(), now()),
+    ('01a00000-0000-7000-8000-000000002008', 'GOODS_SHOP', 'Goods Shop', '굿즈샵', 7, now(), now()),
+    ('01a00000-0000-7000-8000-000000002009', 'DRAMA_FILMING_SITE', 'Drama Filming Site', '드라마 촬영지', 8, now(), now()),
+    ('01a00000-0000-7000-8000-000000002010', 'MV_FILMING_SITE', 'MV Filming Site', '뮤비 촬영지', 9, now(), now()),
+    ('01a00000-0000-7000-8000-000000002011', 'PARK', 'Park', '공원', 10, now(), now()),
+    ('01a00000-0000-7000-8000-000000002012', 'SHOPPING', 'Shopping', '쇼핑', 11, now(), now()),
+    ('01a00000-0000-7000-8000-000000002013', 'EXHIBITION', 'Exhibition', '전시', 12, now(), now()),
+    ('01a00000-0000-7000-8000-000000002014', 'MUSEUM', 'Museum', '박물관', 13, now(), now()),
+    ('01a00000-0000-7000-8000-000000002015', 'NIGHT_VIEW', 'Night View', '야경', 14, now(), now()),
+    ('01a00000-0000-7000-8000-000000002016', 'HEALING', 'Healing', '힐링', 15, now(), now()),
+    ('01a00000-0000-7000-8000-000000002017', 'ETC', 'Etc', '기타', 16, now(), now())
     ON CONFLICT (id) DO NOTHING;
 
 -- 장소 (경도, 위도 순서)
-INSERT INTO places (id, name, category, address, location, district, avg_stay_minutes, phone, homepage_url, video_key, visit_count, created_at, updated_at)
+INSERT INTO places (id, name_en, name_ko, category, address_ko, location, district, avg_stay_minutes, phone, homepage_url, video_key, visit_count, created_at, updated_at)
 VALUES
-    ('01a00000-0000-7000-8000-000000003001', '어니언 성수', 'FANDOM_PLACE', '서울 성동구 아차산로9길 8',
+    ('01a00000-0000-7000-8000-000000003001', 'Onion Seongsu', '어니언 성수', 'FANDOM_PLACE', '서울 성동구 아차산로9길 8',
      ST_GeogFromText('SRID=4326;POINT(127.0581 37.5447)'), '성동구', 60, NULL, NULL, NULL, 0, now(), now()),
-    ('01a00000-0000-7000-8000-000000003002', '테스트 생일카페', 'FANDOM_PLACE', '서울 마포구 테스트로 1',
+    ('01a00000-0000-7000-8000-000000003002', 'Test Birthday Cafe', '테스트 생일카페', 'FANDOM_PLACE', '서울 마포구 테스트로 1',
      ST_GeogFromText('SRID=4326;POINT(126.9236 37.5563)'), '마포구', 60, NULL, NULL, NULL, 0, now(), now())
     ON CONFLICT (id) DO NOTHING;
 
