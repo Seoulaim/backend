@@ -103,6 +103,13 @@ public enum ErrorCode {
   DIARY_PAYMENT_REQUIRED(HttpStatus.PAYMENT_REQUIRED, "DIARY_PAYMENT_REQUIRED", "결제 후 저장할 수 있습니다"),
   DIARY_INVALID_NAME(HttpStatus.BAD_REQUEST, "DIARY_INVALID_NAME", "다이어리 이름은 1~30자여야 합니다"),
   DIARY_NOT_FINISHED(HttpStatus.CONFLICT, "DIARY_NOT_FINISHED", "아직 완성되지 않은 다이어리입니다"),
+
+  // SURVEY
+  SURVEY_ALREADY_ANSWERED(HttpStatus.CONFLICT, "SURVEY_ALREADY_ANSWERED", "이미 응답한 설문입니다"),
+  SURVEY_INVALID(HttpStatus.BAD_REQUEST, "SURVEY_INVALID", "설문 내용이 올바르지 않습니다"),
+  SURVEY_QUESTION_HAS_ANSWERS(
+      HttpStatus.CONFLICT, "SURVEY_QUESTION_HAS_ANSWERS", "응답이 있는 질문은 삭제할 수 없습니다. 숨김 처리해주세요"),
+  SURVEY_QUESTION_NOT_FOUND(HttpStatus.NOT_FOUND, "SURVEY_QUESTION_NOT_FOUND", "설문 질문을 찾을 수 없습니다"),
   ;
 
   private final HttpStatus status;

@@ -13,6 +13,10 @@ public interface PlanItemRepository extends JpaRepository<PlanItem, UUID> {
   // 장소 삭제 가능 여부 확인
   boolean existsByPlaceId(UUID placeId);
 
+  // 일정에 들어간 서로 다른 장소 수
+  @Query("SELECT COUNT(DISTINCT i.place.id) FROM PlanItem i WHERE i.planDay.plan.id = :planId")
+  long countDistinctPlacesByPlanId(@Param("planId") UUID planId);
+
   @Query(
       """
                 SELECT i FROM PlanItem i
