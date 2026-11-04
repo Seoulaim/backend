@@ -12,4 +12,16 @@ import java.lang.annotation.Target;
  */
 @Target(ElementType.PARAMETER)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface CurrentUserId {}
+public @interface CurrentUserId {
+
+  /**
+   * false 면 선택적 인증 (공개 경로에서 로그인 회원만 개인화할 때)
+   *
+   * <ul>
+   *   <li>Authorization 헤더 없음 → null
+   *   <li>유효한 토큰 → userId
+   *   <li>토큰이 있는데 만료·위조 → 401 (앱이 토큰을 갱신하고 다시 요청하도록)
+   * </ul>
+   */
+  boolean required() default true;
+}
