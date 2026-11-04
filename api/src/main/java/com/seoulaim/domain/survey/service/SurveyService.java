@@ -85,6 +85,12 @@ public class SurveyService {
     return new TravelVisitResponse(inviteOf(settings));
   }
 
+  // 회원 탈퇴용: 응답은 남기고 이메일만 익명화 (응답 통계 유지)
+  @Transactional
+  public void anonymizeResponseOfUser(UUID userId) {
+    surveyResponseRepository.findByUserId(userId).ifPresent(SurveyResponse::anonymizeEmail);
+  }
+
   @Transactional
   public void recordEvent(UUID userId, SurveyEventType type) {
     Instant now = clock.instant();

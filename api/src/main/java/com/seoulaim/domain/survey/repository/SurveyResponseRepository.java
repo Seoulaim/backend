@@ -3,6 +3,7 @@ package com.seoulaim.domain.survey.repository;
 import com.seoulaim.domain.survey.entity.SurveyResponse;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -11,6 +12,9 @@ import org.springframework.data.repository.query.Param;
 public interface SurveyResponseRepository extends JpaRepository<SurveyResponse, UUID> {
 
   boolean existsByUserId(UUID userId);
+
+  // user_id unique → 최대 1건
+  Optional<SurveyResponse> findByUserId(UUID userId);
 
   // [from, to) 구간, 최신순
   List<SurveyResponse>

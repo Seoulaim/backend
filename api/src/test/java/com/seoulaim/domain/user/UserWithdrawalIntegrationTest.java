@@ -15,10 +15,17 @@ import com.seoulaim.domain.diary.entity.Diary;
 import com.seoulaim.domain.diary.entity.DiaryPayment;
 import com.seoulaim.domain.diary.repository.DiaryPaymentRepository;
 import com.seoulaim.domain.diary.repository.DiaryRepository;
+import com.seoulaim.domain.place.entity.Place;
+import com.seoulaim.domain.place.entity.PlaceCategory;
+import com.seoulaim.domain.place.repository.PlaceFavoriteRepository;
+import com.seoulaim.domain.place.repository.PlaceRepository;
+import com.seoulaim.domain.place.service.PlaceFavoriteService;
 import com.seoulaim.domain.plan.entity.PlanDay;
 import com.seoulaim.domain.plan.entity.TravelPlan;
 import com.seoulaim.domain.plan.repository.PlanDayRepository;
 import com.seoulaim.domain.plan.repository.TravelPlanRepository;
+import com.seoulaim.domain.survey.entity.SurveyResponse;
+import com.seoulaim.domain.survey.repository.SurveyResponseRepository;
 import com.seoulaim.domain.user.entity.User;
 import com.seoulaim.domain.user.entity.UserStatus;
 import com.seoulaim.domain.user.repository.UserRepository;
@@ -28,10 +35,14 @@ import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.locationtech.jts.geom.Coordinate;
+import org.locationtech.jts.geom.GeometryFactory;
+import org.locationtech.jts.geom.PrecisionModel;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -60,6 +71,7 @@ class UserWithdrawalIntegrationTest {
 
   private static final String EMAIL = "luna@example.com";
   private static final String PASSWORD = "seoulaim1234";
+  private static final GeometryFactory GEOMETRY = new GeometryFactory(new PrecisionModel(), 4326);
 
   @Autowired private UserWithdrawalService userWithdrawalService;
   @Autowired private UserService userService;
@@ -73,9 +85,14 @@ class UserWithdrawalIntegrationTest {
   @Autowired private PlanDayRepository planDayRepository;
   @Autowired private DiaryRepository diaryRepository;
   @Autowired private DiaryPaymentRepository diaryPaymentRepository;
+  @Autowired private PlaceRepository placeRepository;
+  @Autowired private PlaceFavoriteRepository placeFavoriteRepository;
+  @Autowired private PlaceFavoriteService placeFavoriteService;
+  @Autowired private SurveyResponseRepository surveyResponseRepository;
 
   @Test
-  @DisplayName("탈퇴하면 로그인·토큰 재발급이 실패하고 bias·일정은 삭제, 다이어리는 soft delete, 결제는 남는다")
+  @DisplayName(
+      "탈퇴하면 로그인·토큰 재발급이 실패하고 bias·즐겨찾기·일정은 삭제, 다이어리는 soft delete, " + "결제는 남고 설문 응답은 이메일만 익명화된다")
   void withdraw_탈퇴후_로그인실패_데이터정리() {
     User user = userService.createUser(EMAIL, passwordEncoder.encode(PASSWORD), "Luna");
     UUID userId = user.getId();
@@ -94,6 +111,24 @@ class UserWithdrawalIntegrationTest {
             diary.getId(), userId, "DIA-20261104-ABCDEFGHIJ", 3000, Instant.now());
     payment.markPaid("toss-key", Instant.now());
     diaryPaymentRepository.save(payment);
+    Place cafe =
+        placeRepository.save(
+            Place.create(
+                "어니언 성수",
+                PlaceCategory.FANDOM_PLACE,
+                "서울 성동구 아차산로9길 8",
+                GEOMETRY.createPoint(new Coordinate(127.0581, 37.5447)),
+                "성동구",
+                null,
+                null));
+    placeFavoriteService.addFavorite(userId, cafe.getId());
+    // 다른 회원의 즐겨찾기는 남아야 한다
+    UUID otherId = userService.createUser("sol@example.com", "hash", "Sol").getId();
+    placeFavoriteService.addFavorite(otherId, cafe.getId());
+    Map<String, Object> answers = Map.of("q1", 5);
+    SurveyResponse surveyResponse =
+        surveyResponseRepository.save(
+            SurveyResponse.create(userId, EMAIL, Map.of("dayCount", 2), answers, Instant.now()));
 
     userWithdrawalService.withdraw(userId);
 
@@ -114,6 +149,13 @@ class UserWithdrawalIntegrationTest {
     assertThat(travelPlanRepository.existsByUserId(userId)).isFalse();
     assertThat(diaryRepository.findById(diary.getId()).orElseThrow().isDeleted()).isTrue();
     assertThat(diaryPaymentRepository.findById(payment.getId()).orElseThrow().isPaid()).isTrue();
+    assertThat(placeFavoriteRepository.existsByUserIdAndPlaceId(userId, cafe.getId())).isFalse();
+    assertThat(placeFavoriteRepository.existsByUserIdAndPlaceId(otherId, cafe.getId())).isTrue();
+    SurveyResponse anonymized =
+        surveyResponseRepository.findById(surveyResponse.getId()).orElseThrow();
+    assertThat(anonymized.getEmail()).isEqualTo(SurveyResponse.WITHDRAWN_EMAIL);
+    assertThat(anonymized.getUserId()).isEqualTo(userId);
+    assertThat(anonymized.getAnswers()).isEqualTo(answers);
 
     // 다시 호출해도 오류 없음 (멱등), 같은 이메일로 재가입 가능
     userWithdrawalService.withdraw(userId);
