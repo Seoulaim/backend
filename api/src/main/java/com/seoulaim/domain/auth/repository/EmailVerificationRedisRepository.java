@@ -15,6 +15,7 @@ import org.springframework.stereotype.Repository;
  *   <li>attempts: 인증번호 실패 횟수
  *   <li>cooldown: 재발송 제한 표시 (TTL 60초)
  *   <li>token: 인증 완료 → 회원가입용 토큰과 이메일 매핑 (TTL 30분)
+ *   <li>비밀번호 재설정은 {@link VerificationPurpose#PASSWORD_RESET} 키 공간을 따로 쓴다 (token 없음)
  * </ul>
  */
 @Repository
@@ -61,6 +62,40 @@ public class EmailVerificationRedisRepository {
 
   public void deleteCode(String email) {
     redisTemplate.delete(List.of(CODE_KEY + email, ATTEMPTS_KEY + email));
+  }
+
+  // ===== 용도(purpose)별 버전. 위 메서드는 SIGNUP 과 같은 키를 쓴다 =====
+
+  public boolean tryAcquireResendCooldown(
+      VerificationPurpose purpose, String email, Duration cooldown) {
+    return Boolean.TRUE.equals(
+        redisTemplate.opsForValue().setIfAbsent(purpose.cooldownKey(email), "1", cooldown));
+  }
+
+  public void deleteResendCooldown(VerificationPurpose purpose, String email) {
+    redisTemplate.delete(purpose.cooldownKey(email));
+  }
+
+  public void saveCode(VerificationPurpose purpose, String email, String code, Duration ttl) {
+    redisTemplate.opsForValue().set(purpose.codeKey(email), code, ttl);
+    redisTemplate.delete(purpose.attemptsKey(email));
+  }
+
+  public Optional<String> findCode(VerificationPurpose purpose, String email) {
+    return Optional.ofNullable(redisTemplate.opsForValue().get(purpose.codeKey(email)));
+  }
+
+  public long increaseAttempts(VerificationPurpose purpose, String email, Duration ttl) {
+    String key = purpose.attemptsKey(email);
+    Long attempts = redisTemplate.opsForValue().increment(key);
+    if (attempts != null && attempts == 1) {
+      redisTemplate.expire(key, ttl);
+    }
+    return attempts == null ? 0 : attempts;
+  }
+
+  public void deleteCode(VerificationPurpose purpose, String email) {
+    redisTemplate.delete(List.of(purpose.codeKey(email), purpose.attemptsKey(email)));
   }
 
   public void saveVerifiedEmail(String token, String email, Duration ttl) {

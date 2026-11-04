@@ -244,6 +244,17 @@ public class PlanService {
     travelPlanRepository.delete(plan);
   }
 
+  // 회원 탈퇴용: 그 사용자의 일정 전부 삭제
+  @Transactional
+  public void deleteAllPlansOfUser(UUID userId) {
+    List<TravelPlan> plans = travelPlanRepository.findAllByUserId(userId);
+    for (TravelPlan plan : plans) {
+      planItemRepository.deleteAllByPlanId(plan.getId());
+      planDayRepository.deleteAllByPlanId(plan.getId());
+    }
+    travelPlanRepository.deleteAll(plans);
+  }
+
   // 아티스트 연결 + 키워드 일치 장소를 모아 점수 합산. 숨김 장소 제외
   private List<Candidate> buildCandidates(
       List<Artist> artists, List<UUID> keywordIds, LocalDate startDate, LocalDate endDate) {

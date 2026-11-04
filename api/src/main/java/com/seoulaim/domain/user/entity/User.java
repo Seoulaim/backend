@@ -49,6 +49,10 @@ public class User extends BaseEntity {
   @Column(name = "marketing_enabled", nullable = false)
   private boolean marketingEnabled;
 
+  // 마케팅 수신 동의를 마지막으로 바꾼 시각. 한 번도 바꾸지 않았으면 null
+  @Column(name = "marketing_updated_at")
+  private Instant marketingUpdatedAt;
+
   @Enumerated(EnumType.STRING)
   @Column(name = "status", nullable = false, length = 20)
   private UserStatus status;
@@ -84,5 +88,32 @@ public class User extends BaseEntity {
 
   public void changeNickname(String nickname) {
     this.nickname = nickname;
+  }
+
+  public boolean isWithdrawn() {
+    return status == UserStatus.WITHDRAWN;
+  }
+
+  // null → 프로필 이미지 제거
+  public void changeProfileImageKey(String profileImageKey) {
+    this.profileImageKey = profileImageKey;
+  }
+
+  public void changeLocale(String locale) {
+    this.locale = locale;
+  }
+
+  // 값이 실제로 바뀔 때만 변경 시각 갱신
+  public void changeMarketingEnabled(boolean marketingEnabled, Instant now) {
+    if (this.marketingEnabled == marketingEnabled) {
+      return;
+    }
+    this.marketingEnabled = marketingEnabled;
+    this.marketingUpdatedAt = now;
+  }
+
+  // bcrypt 해시. 비밀번호 규칙 검증은 호출 전 서비스에서
+  public void changePasswordHash(String passwordHash) {
+    this.passwordHash = passwordHash;
   }
 }

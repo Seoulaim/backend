@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 회원가입·로그인·토큰 재발급·로그아웃
+ * 회원가입·로그인·토큰 재발급·로그아웃·비밀번호 재설정
  *
  * <ul>
  *   <li>access token 은 무상태, refresh token 은 Redis 로 폐기 관리
@@ -83,6 +83,33 @@ public class AuthService {
     if (claims.userId().equals(userId)) {
       refreshTokenRedisRepository.delete(claims.userId(), claims.tokenId());
     }
+  }
+
+  /**
+   * 비밀번호 재설정. 규칙 위반이면 인증번호를 소모하지 않고 AUTH_INVALID_PASSWORD
+   *
+   * <p>성공 시 모든 기기의 refresh token 폐기 → 다른 기기는 재로그인 필요
+   */
+  @Transactional
+  public void resetPassword(String rawEmail, String code, String newPassword) {
+    if (!PasswordPolicy.isValid(newPassword)) {
+      throw new BusinessException(ErrorCode.AUTH_INVALID_PASSWORD);
+    }
+    String email = EmailNormalizer.normalize(rawEmail);
+    emailVerificationService.consumePasswordResetCode(email, code);
+    // 인증번호 발송 후 탈퇴한 경우 등 → 만료와 같은 응답
+    User user =
+        userService
+            .findByEmail(email)
+            .filter(found -> found.getPasswordHash() != null)
+            .orElseThrow(() -> new BusinessException(ErrorCode.AUTH_OTP_EXPIRED));
+    userService.changePassword(user.getId(), passwordEncoder.encode(newPassword));
+    revokeAllRefreshTokens(user.getId());
+  }
+
+  // 탈퇴·비밀번호 재설정 시 호출. 이미 발급된 access token 은 만료 시까지 유효
+  public void revokeAllRefreshTokens(UUID userId) {
+    refreshTokenRedisRepository.deleteAllByUserId(userId);
   }
 
   private TokenResponse issueTokens(UUID userId) {

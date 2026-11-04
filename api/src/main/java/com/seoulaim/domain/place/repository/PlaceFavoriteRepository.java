@@ -15,6 +15,11 @@ public interface PlaceFavoriteRepository extends JpaRepository<PlaceFavorite, UU
   @Query("DELETE FROM PlaceFavorite f WHERE f.user.id = :userId AND f.place.id = :placeId")
   void deleteByUserIdAndPlaceId(@Param("userId") UUID userId, @Param("placeId") UUID placeId);
 
+  // 회원 탈퇴용. 벌크 delete → 영속성 컨텍스트 비움
+  @Modifying(flushAutomatically = true, clearAutomatically = true)
+  @Query("DELETE FROM PlaceFavorite f WHERE f.user.id = :userId")
+  void deleteAllByUserId(@Param("userId") UUID userId);
+
   @Modifying(flushAutomatically = true)
   @Query("DELETE FROM PlaceFavorite f WHERE f.place.id = :placeId")
   void deleteAllByPlaceId(@Param("placeId") UUID placeId);

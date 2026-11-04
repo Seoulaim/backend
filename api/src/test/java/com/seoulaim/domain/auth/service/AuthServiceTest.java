@@ -116,4 +116,32 @@ class AuthServiceTest {
     assertThatCode(() -> authService.logout(UUID.randomUUID(), "expired"))
         .doesNotThrowAnyException();
   }
+
+  @Test
+  @DisplayName("새 비밀번호가 규칙에 맞지 않으면 인증번호를 소모하지 않고 AUTH_INVALID_PASSWORD")
+  void resetPassword_비밀번호규칙위반_예외() {
+    for (String password : new String[] {"short1", "onlyletters", "12345678", null}) {
+      assertThatThrownBy(() -> authService.resetPassword(EMAIL, "123456", password))
+          .isInstanceOf(BusinessException.class)
+          .extracting("errorCode")
+          .isEqualTo(ErrorCode.AUTH_INVALID_PASSWORD);
+    }
+    verify(emailVerificationService, never()).consumePasswordResetCode(anyString(), anyString());
+  }
+
+  @Test
+  @DisplayName("재설정 성공 시 비밀번호를 바꾸고 refresh token 을 전부 폐기한다")
+  void resetPassword_정상_비밀번호변경및토큰폐기() {
+    User user = User.createWithEmail(EMAIL, "old-hash", "Luna");
+    UUID userId = UUID.randomUUID();
+    ReflectionTestUtils.setField(user, "id", userId);
+    given(userService.findByEmail(EMAIL)).willReturn(Optional.of(user));
+    given(passwordEncoder.encode("newpass1234")).willReturn("new-hash");
+
+    authService.resetPassword(" Luna@Example.com ", "123456", "newpass1234");
+
+    verify(emailVerificationService).consumePasswordResetCode(EMAIL, "123456");
+    verify(userService).changePassword(userId, "new-hash");
+    verify(refreshTokenRedisRepository).deleteAllByUserId(userId);
+  }
 }

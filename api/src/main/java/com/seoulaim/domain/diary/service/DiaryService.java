@@ -20,6 +20,7 @@ import com.seoulaim.global.config.DiaryProperties;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -91,6 +92,13 @@ public class DiaryService {
   @Transactional
   public void delete(UUID userId, UUID diaryId) {
     findMyDiary(userId, diaryId).delete(clock.instant());
+  }
+
+  // 회원 탈퇴용: 삭제되지 않은 다이어리 전부 soft delete. 결제(diary_payments)는 그대로 둔다
+  @Transactional
+  public void deleteAllDiariesOfUser(UUID userId) {
+    Instant now = clock.instant();
+    diaryRepository.findAllByUserIdAndDeletedAtIsNull(userId).forEach(diary -> diary.delete(now));
   }
 
   public DiaryEditorResponse getEditor(UUID userId, UUID diaryId) {

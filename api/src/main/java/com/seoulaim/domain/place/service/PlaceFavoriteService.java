@@ -40,6 +40,12 @@ public class PlaceFavoriteService {
     }
   }
 
+  // 회원 탈퇴용. 벌크 delete 가 영속성 컨텍스트를 비우므로 호출 후 엔티티는 다시 조회
+  @Transactional
+  public void deleteAllFavoritesOfUser(UUID userId) {
+    placeFavoriteRepository.deleteAllByUserId(userId);
+  }
+
   @Transactional
   public void removeFavorite(UUID userId, UUID placeId) {
     placeFavoriteRepository.deleteByUserIdAndPlaceId(userId, placeId);

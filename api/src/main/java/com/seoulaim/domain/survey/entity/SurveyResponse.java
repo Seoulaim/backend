@@ -51,6 +51,8 @@ public class SurveyResponse extends BaseEntity {
   @Column(name = "gift_sent_at")
   private Instant giftSentAt;
 
+  public static final String WITHDRAWN_EMAIL = "withdrawn";
+
   public static SurveyResponse create(
       UUID userId,
       String email,
@@ -65,6 +67,11 @@ public class SurveyResponse extends BaseEntity {
     response.submittedAt = submittedAt;
     response.giftStatus = SurveyGiftStatus.PENDING;
     return response;
+  }
+
+  // 회원 탈퇴 시 개인정보(이메일)만 제거. 응답·플랜 요약은 통계용으로 유지
+  public void anonymizeEmail() {
+    this.email = WITHDRAWN_EMAIL;
   }
 
   public boolean isGiftSent() {
