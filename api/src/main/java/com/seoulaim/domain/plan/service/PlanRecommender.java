@@ -21,7 +21,7 @@ import org.springframework.stereotype.Component;
  * 일정 추천 알고리즘 (MVP)
  *
  * <ul>
- *   <li>점수: 멤버 연결 3, 그룹 연결 2, 키워드 일치 1, 당일 이벤트 +3
+ *   <li>점수: 멤버 연결 3, 그룹 연결 2, 키워드 일치 3, 당일 이벤트 +3
  *   <li>운영 기간이 있는 장소는 기간 안의 날짜에만 후보
  *   <li>요일 영업시간이 휴무면 그날 후보 제외
  *   <li>날짜별 상위 점수 최대 5곳, 이미 배정한 장소는 다음 날 제외
@@ -35,7 +35,7 @@ public class PlanRecommender {
 
   static final int ARTIST_SCORE = 3;
   static final int GROUP_SCORE = 2;
-  static final int KEYWORD_SCORE = 1;
+  static final int KEYWORD_SCORE = 3;
   private static final int EVENT_BONUS = 3;
   private static final int MAX_PLACES_PER_DAY = 5;
   private static final int DAY_START_MINUTE = 10 * 60;

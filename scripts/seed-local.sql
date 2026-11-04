@@ -41,11 +41,11 @@ VALUES
     ON CONFLICT (id) DO NOTHING;
 
 -- 장소 (경도, 위도 순서)
-INSERT INTO places (id, name, category, address, location, district, avg_stay_minutes, phone, homepage_url, video_key, visit_count, created_at, updated_at)
+INSERT INTO places (id, name_en, name_ko, category, address_ko, location, district, avg_stay_minutes, phone, homepage_url, video_key, visit_count, created_at, updated_at)
 VALUES
-    ('01a00000-0000-7000-8000-000000003001', '어니언 성수', 'FANDOM_PLACE', '서울 성동구 아차산로9길 8',
+    ('01a00000-0000-7000-8000-000000003001', 'Onion Seongsu', '어니언 성수', 'FANDOM_PLACE', '서울 성동구 아차산로9길 8',
      ST_GeogFromText('SRID=4326;POINT(127.0581 37.5447)'), '성동구', 60, NULL, NULL, NULL, 0, now(), now()),
-    ('01a00000-0000-7000-8000-000000003002', '테스트 생일카페', 'FANDOM_PLACE', '서울 마포구 테스트로 1',
+    ('01a00000-0000-7000-8000-000000003002', 'Test Birthday Cafe', '테스트 생일카페', 'FANDOM_PLACE', '서울 마포구 테스트로 1',
      ST_GeogFromText('SRID=4326;POINT(126.9236 37.5563)'), '마포구', 60, NULL, NULL, NULL, 0, now(), now())
     ON CONFLICT (id) DO NOTHING;
 

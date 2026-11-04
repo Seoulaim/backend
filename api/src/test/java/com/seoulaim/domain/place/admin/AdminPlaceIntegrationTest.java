@@ -15,9 +15,11 @@ import com.seoulaim.domain.place.admin.dto.AdminPlaceListRequest;
 import com.seoulaim.domain.place.admin.dto.AdminPlaceListResponse;
 import com.seoulaim.domain.place.admin.dto.AdminPlaceOperatingPeriod;
 import com.seoulaim.domain.place.admin.dto.AdminPlaceRequest;
+import com.seoulaim.domain.place.admin.dto.AdminPlaceRequest.AdminPlaceAddress;
 import com.seoulaim.domain.place.admin.dto.AdminPlaceRequest.AdminPlaceArtistRequest;
 import com.seoulaim.domain.place.admin.dto.AdminPlaceRequest.AdminPlaceLocation;
 import com.seoulaim.domain.place.admin.dto.AdminPlaceRequest.AdminPlaceOpeningHourRequest;
+import com.seoulaim.domain.place.admin.dto.AdminPlaceRequest.AdminPlaceText;
 import com.seoulaim.domain.place.admin.dto.AdminPlaceSummaryResponse;
 import com.seoulaim.domain.place.entity.Keyword;
 import com.seoulaim.domain.place.entity.Place;
@@ -138,7 +140,13 @@ class AdminPlaceIntegrationTest {
                 List.of("CAFE", "PHOTO_SPOT"),
                 List.of(new AdminPlaceArtistRequest(ateez.getId(), san.getId(), "산 생일"))));
 
-    assertThat(created.name()).isEqualTo("SAN 생일카페");
+    assertThat(created.name().en()).isEqualTo("SAN 생일카페");
+    assertThat(created.name().ko()).isEqualTo("SAN 생일카페 (KO)");
+    assertThat(created.name().ja()).isNull();
+    assertThat(created.summary().en()).isEqualTo("summary");
+    assertThat(created.address().en()).isEqualTo("21 Wausan-ro, Mapo-gu, Seoul");
+    assertThat(created.naverMapUrl()).isEqualTo("https://naver.me/abc");
+    assertThat(created.referenceLinks()).containsExactly("https://youtu.be/1");
     assertThat(created.location().latitude()).isEqualTo(37.5512);
     assertThat(created.imageKeys()).containsExactly(IMAGE_1, IMAGE_2);
     assertThat(created.operatingPeriod().startsOn()).isEqualTo(LocalDate.of(2026, 11, 9));
@@ -179,7 +187,7 @@ class AdminPlaceIntegrationTest {
                 List.of("PHOTO_SPOT"),
                 List.of(new AdminPlaceArtistRequest(seventeen.getId(), null, "그룹 연결"))));
 
-    assertThat(updated.name()).isEqualTo("어니언 성수");
+    assertThat(updated.name().en()).isEqualTo("어니언 성수");
     assertThat(updated.visible()).isFalse();
     assertThat(updated.imageKeys()).containsExactly(IMAGE_2, IMAGE_1);
     assertThat(updated.operatingPeriod()).isNull();
@@ -368,15 +376,18 @@ class AdminPlaceIntegrationTest {
       List<String> keywordCodes,
       List<AdminPlaceArtistRequest> artists) {
     return new AdminPlaceRequest(
-        name,
+        new AdminPlaceText(name, name + " (KO)", "", null),
+        new AdminPlaceText("summary", "한 줄 소개", null, null),
         PlaceCategory.FANDOM_PLACE,
         visible,
-        "서울 마포구 와우산로 21",
+        new AdminPlaceAddress("서울 마포구 와우산로 21", "21 Wausan-ro, Mapo-gu, Seoul", null, null),
         "마포구",
         new AdminPlaceLocation(37.5512, 126.9227),
         60,
         null,
         null,
+        "https://naver.me/abc",
+        List.of("https://youtu.be/1"),
         imageKeys,
         period,
         hours,

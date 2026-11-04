@@ -53,6 +53,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
@@ -134,9 +135,9 @@ public class AdminPlaceService {
 
     Place place =
         Place.create(
-            request.name(),
-            request.category(),
-            request.address(),
+            request.name().en(),
+            request.categoryOrDefault(),
+            request.address().ko(),
             toPoint(request),
             request.district(),
             request.phone(),
@@ -188,15 +189,18 @@ public class AdminPlaceService {
 
   private void applyFields(Place place, AdminPlaceRequest request) {
     place.update(
-        request.name(),
-        request.category(),
+        request.name().toLocalized(),
+        request.summary().toLocalized(),
+        request.categoryOrDefault(),
         request.visibleOrDefault(),
-        request.address(),
+        request.address().toLocalized(),
         toPoint(request),
         request.district(),
         request.avgStayMinutesOrDefault(),
         request.phone(),
-        request.homepageUrl());
+        request.homepageUrl(),
+        request.naverMapUrl(),
+        request.referenceLinksOrEmpty());
   }
 
   private void saveChildren(
@@ -368,15 +372,18 @@ public class AdminPlaceService {
 
     return new AdminPlaceDetailResponse(
         placeId,
-        place.getName(),
+        place.getNames(),
+        place.getSummaries(),
         place.getCategory(),
         place.isVisible(),
-        place.getAddress(),
+        place.getAddresses(),
         place.getDistrict(),
         new Location(place.getLocation().getY(), place.getLocation().getX()),
         place.getAvgStayMinutes(),
         place.getPhone(),
         place.getHomepageUrl(),
+        place.getNaverMapUrl(),
+        List.copyOf(place.getReferenceLinks()),
         imageKeys,
         findOperatingPeriods(List.of(placeId)).get(placeId),
         PlaceOpeningHourResponse.listOf(placeOpeningHourRepository.findAllByPlaceId(placeId)),
@@ -407,7 +414,7 @@ public class AdminPlaceService {
             place ->
                 new AdminPlaceSummaryResponse(
                     place.getId(),
-                    place.getName(),
+                    place.getNames(),
                     place.getCategory(),
                     place.isVisible(),
                     thumbnails.get(place.getId()),
@@ -441,7 +448,12 @@ public class AdminPlaceService {
     List<Specification<Place>> specs = new ArrayList<>();
     if (request.keyword() != null && !request.keyword().isBlank()) {
       String pattern = "%" + escapeLike(request.keyword().trim().toLowerCase(Locale.ROOT)) + "%";
-      specs.add((root, query, cb) -> cb.like(cb.lower(root.<String>get("name")), pattern, '\\'));
+      specs.add(
+          (root, query, cb) ->
+              cb.or(
+                  Stream.of("nameEn", "nameKo", "nameJa", "nameZh")
+                      .map(field -> cb.like(cb.lower(root.<String>get(field)), pattern, '\\'))
+                      .toArray(Predicate[]::new)));
     }
     if (request.visible() != null) {
       specs.add((root, query, cb) -> cb.equal(root.get("visible"), request.visible()));
