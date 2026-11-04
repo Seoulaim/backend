@@ -34,6 +34,7 @@ public enum ErrorCode {
   USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "사용자를 찾을 수 없습니다"),
   USER_EMAIL_DUPLICATED(HttpStatus.CONFLICT, "USER_EMAIL_DUPLICATED", "이미 사용 중인 이메일입니다"),
   USER_SUSPENDED(HttpStatus.FORBIDDEN, "USER_SUSPENDED", "이용이 정지된 계정입니다"),
+  USER_INVALID_NICKNAME(HttpStatus.BAD_REQUEST, "USER_INVALID_NICKNAME", "닉네임은 1~20자여야 합니다"),
 
   // ARTIST
   ARTIST_GROUP_NOT_FOUND(HttpStatus.NOT_FOUND, "ARTIST_GROUP_NOT_FOUND", "그룹을 찾을 수 없습니다"),
