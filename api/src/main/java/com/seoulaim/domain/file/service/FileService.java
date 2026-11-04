@@ -57,7 +57,11 @@ public class FileService {
   // 어드민만 올릴 수 있는 도메인. jpeg/png/webp 만 허용한다 (heic 제외)
   private static final Set<FileDomain> ADMIN_ONLY_DOMAINS =
       EnumSet.of(
-          FileDomain.DIARY_TEMPLATE, FileDomain.DIARY_STICKER, FileDomain.ARTIST, FileDomain.PLACE);
+          FileDomain.DIARY_TEMPLATE,
+          FileDomain.DIARY_STICKER,
+          FileDomain.ARTIST,
+          FileDomain.PLACE,
+          FileDomain.CONTENT);
   // 어드민 업로드 API 가 받는 도메인
   private static final Set<FileDomain> ADMIN_UPLOAD_DOMAINS =
       EnumSet.of(
@@ -65,7 +69,8 @@ public class FileService {
           FileDomain.DIARY_STICKER,
           FileDomain.PRODUCT,
           FileDomain.ARTIST,
-          FileDomain.PLACE);
+          FileDomain.PLACE,
+          FileDomain.CONTENT);
   private static final DateTimeFormatter KEY_MONTH_FORMAT =
       DateTimeFormatter.ofPattern("yyyy/MM").withZone(ZoneOffset.UTC);
 
