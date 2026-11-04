@@ -12,6 +12,7 @@ import com.seoulaim.global.exception.ErrorCode;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -46,6 +47,13 @@ public class UserBiasService {
     return userBiasRepository.findAllWithArtistByUserId(userId).stream()
         .map(bias -> bias.getArtist().getId())
         .toList();
+  }
+
+  /** 내 bias 멤버들이 속한 그룹 id (홈 콘텐츠 최애 필터용). bias 가 없으면 빈 집합. */
+  public Set<UUID> findMyBiasGroupIds(UUID userId) {
+    return userBiasRepository.findAllWithArtistByUserId(userId).stream()
+        .map(bias -> bias.getArtist().getArtistGroup().getId())
+        .collect(Collectors.toSet());
   }
 
   @Transactional

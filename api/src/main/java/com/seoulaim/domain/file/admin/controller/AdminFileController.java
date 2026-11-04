@@ -25,7 +25,7 @@ public class AdminFileController {
 
   @Operation(
       summary =
-          "[관리자] 이미지 업로드용 presigned PUT URL 발급 (DIARY_TEMPLATE·DIARY_STICKER·PRODUCT·ARTIST·PLACE)")
+          "[관리자] 이미지 업로드용 presigned PUT URL 발급 (DIARY_TEMPLATE·DIARY_STICKER·PRODUCT·ARTIST·PLACE·CONTENT)")
   @PostMapping("/presigned-upload")
   public PresignedUploadResponse createPresignedUpload(
       @Valid @RequestBody PresignedUploadRequest request) {

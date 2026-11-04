@@ -18,7 +18,9 @@ public enum FileDomain {
   DIARY_STICKER,
   // 어드민 전용 (그룹·멤버 사진, 장소 사진)
   ARTIST,
-  PLACE;
+  PLACE,
+  // 어드민 전용 (홈 콘텐츠: 이벤트·생일카페·배너 이미지)
+  CONTENT;
 
   public static FileDomain from(String value) {
     return Arrays.stream(values())

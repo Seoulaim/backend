@@ -14,6 +14,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -68,6 +69,25 @@ public class ArtistService {
       throw new BusinessException(ErrorCode.ARTIST_NOT_FOUND);
     }
     return artists;
+  }
+
+  /** 주어진 그룹 id 중 존재하는 것만 (홈 콘텐츠 대상 그룹 검증용). */
+  public Set<UUID> findExistingGroupIds(Collection<UUID> groupIds) {
+    if (groupIds.isEmpty()) {
+      return Set.of();
+    }
+    return artistGroupRepository.findAllById(groupIds).stream()
+        .map(ArtistGroup::getId)
+        .collect(Collectors.toSet());
+  }
+
+  /** 아티스트 id → 소속 그룹 id. 없는 아티스트는 결과에서 빠진다 (생일카페 검증·최애 필터용). */
+  public Map<UUID, UUID> findGroupIdsByArtistIds(Collection<UUID> artistIds) {
+    if (artistIds.isEmpty()) {
+      return Map.of();
+    }
+    return artistRepository.findAllById(artistIds).stream()
+        .collect(Collectors.toMap(Artist::getId, artist -> artist.getArtistGroup().getId()));
   }
 
   // 그룹을 한 번에 조회 → 아티스트마다 그룹 조회(N+1) 방지

@@ -113,6 +113,11 @@ public enum ErrorCode {
   SURVEY_QUESTION_HAS_ANSWERS(
       HttpStatus.CONFLICT, "SURVEY_QUESTION_HAS_ANSWERS", "응답이 있는 질문은 삭제할 수 없습니다. 숨김 처리해주세요"),
   SURVEY_QUESTION_NOT_FOUND(HttpStatus.NOT_FOUND, "SURVEY_QUESTION_NOT_FOUND", "설문 질문을 찾을 수 없습니다"),
+
+  // CONTENT
+  CONTENT_NOT_FOUND(HttpStatus.NOT_FOUND, "CONTENT_NOT_FOUND", "콘텐츠를 찾을 수 없습니다"),
+  CONTENT_DEFAULT_BANNER(HttpStatus.CONFLICT, "CONTENT_DEFAULT_BANNER", "기본 배너는 끄거나 삭제할 수 없습니다"),
+  CONTENT_INVALID_GROUP(HttpStatus.BAD_REQUEST, "CONTENT_INVALID_GROUP", "존재하지 않는 그룹 또는 멤버입니다"),
   ;
 
   private final HttpStatus status;

@@ -45,12 +45,15 @@ public class SecurityConfig {
     "/swagger-ui/**", "/v3/api-docs/**", "/actuator/health", "/error", "/api/v1/auth/**"
   };
 
-  // 비로그인 조회 허용 (상품·카테고리·프로모션·키워드)
+  // 비로그인 조회 허용 (상품·카테고리·프로모션·키워드·홈 콘텐츠·다이어리 배너)
+  // 홈 콘텐츠는 토큰이 있으면 최애 필터 (@CurrentUserId(required = false))
   private static final String[] PUBLIC_GET_PATHS = {
     "/api/v1/products/**",
     "/api/v1/product-categories/**",
     "/api/v1/promotions/**",
-    "/api/v1/keywords"
+    "/api/v1/keywords",
+    "/api/v1/home/**",
+    "/api/v1/diary-banners"
   };
 
   // 관리자 API 는 JWT 대신 X-Admin-Key 로 검증 (AdminKeyInterceptor)
