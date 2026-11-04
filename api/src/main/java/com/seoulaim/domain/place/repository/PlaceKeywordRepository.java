@@ -18,11 +18,11 @@ public interface PlaceKeywordRepository extends JpaRepository<PlaceKeyword, UUID
   // 키워드 노출 순서대로
   @Query(
       """
-              SELECT pk FROM PlaceKeyword pk
-              JOIN FETCH pk.keyword k
-              WHERE pk.place.id IN :placeIds
-              ORDER BY k.displayOrder ASC, k.id ASC
-              """)
+                  SELECT pk FROM PlaceKeyword pk
+                  JOIN FETCH pk.keyword k
+                  WHERE pk.place.id IN :placeIds
+                  ORDER BY k.displayOrder ASC, k.id ASC
+                  """)
   List<PlaceKeyword> findAllWithKeywordByPlaceIdIn(@Param("placeIds") Collection<UUID> placeIds);
 
   // [장소 id, 키워드 수]
@@ -31,7 +31,17 @@ public interface PlaceKeywordRepository extends JpaRepository<PlaceKeyword, UUID
           + " GROUP BY pk.place.id")
   List<Object[]> countByPlaceIds(@Param("placeIds") Collection<UUID> placeIds);
 
+  // [키워드 id, 장소 수]
+  @Query("SELECT pk.keyword.id, COUNT(pk) FROM PlaceKeyword pk GROUP BY pk.keyword.id")
+  List<Object[]> countPlacesByKeyword();
+
+  long countByKeywordId(UUID keywordId);
+
   @Modifying(flushAutomatically = true)
   @Query("DELETE FROM PlaceKeyword pk WHERE pk.place.id = :placeId")
   void deleteAllByPlaceId(@Param("placeId") UUID placeId);
+
+  @Modifying(flushAutomatically = true)
+  @Query("DELETE FROM PlaceKeyword pk WHERE pk.keyword.id = :keywordId")
+  void deleteAllByKeywordId(@Param("keywordId") UUID keywordId);
 }
