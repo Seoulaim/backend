@@ -135,6 +135,30 @@ public class Inquiry extends BaseEntity {
     this.memo = memo;
   }
 
+  /** 환불 승인. 정책 밖 승인이면 예외 사유를 남긴다 (정책 안이어도 넘어오면 그대로 남긴다). */
+  public void approveRefund(String exceptionReason, String exceptionMemo, Instant now) {
+    requirePendingRefund();
+    this.refundStatus = RefundStatus.REFUNDED;
+    this.refundDecidedAt = now;
+    this.refundExceptionReason = exceptionReason;
+    this.refundExceptionMemo = exceptionMemo;
+    markAnswered();
+  }
+
+  public void rejectRefund(String reason, Instant now) {
+    requirePendingRefund();
+    this.refundStatus = RefundStatus.REJECTED;
+    this.refundDecidedAt = now;
+    this.refundRejectReason = reason;
+    markAnswered();
+  }
+
+  private void requirePendingRefund() {
+    if (!isRefundRequested()) {
+      throw new IllegalStateException("처리 대기 중인 환불 문의가 아니다: " + getId());
+    }
+  }
+
   public boolean isRefund() {
     return category == InquiryCategory.REFUND;
   }

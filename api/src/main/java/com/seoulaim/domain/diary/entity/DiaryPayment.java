@@ -94,6 +94,13 @@ public class DiaryPayment extends BaseEntity {
     this.failureMessage = truncate(message, FAILURE_MESSAGE_MAX_LENGTH);
   }
 
+  /** 토스 결제 취소 성공. cancelKey 는 응답에 없으면 null. */
+  public void markRefunded(String tossCancelKey, Instant refundedAt) {
+    this.status = DiaryPaymentStatus.REFUNDED;
+    this.tossCancelKey = tossCancelKey;
+    this.refundedAt = refundedAt;
+  }
+
   /** 같은 다이어리에 새 결제를 만들면 기존 PENDING 결제는 실패 처리한다. */
   public void supersede() {
     markFailed(null, SUPERSEDED_CODE, "새 결제 요청으로 대체됨");

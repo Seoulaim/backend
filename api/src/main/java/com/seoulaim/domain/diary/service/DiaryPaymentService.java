@@ -6,6 +6,7 @@ import com.seoulaim.domain.diary.dto.DiaryPaymentConfirmResponse;
 import com.seoulaim.domain.diary.dto.DiaryPaymentCreateRequest;
 import com.seoulaim.domain.diary.dto.DiaryPaymentCreateResponse;
 import com.seoulaim.domain.diary.dto.MyPaymentResponse;
+import com.seoulaim.domain.diary.dto.PaymentRefundInfo;
 import com.seoulaim.domain.diary.dto.RefundRequestCheck;
 import com.seoulaim.domain.diary.entity.Diary;
 import com.seoulaim.domain.diary.entity.DiaryPayment;
@@ -13,6 +14,7 @@ import com.seoulaim.domain.diary.entity.DiaryPaymentStatus;
 import com.seoulaim.domain.diary.repository.DiaryPaymentRepository;
 import com.seoulaim.domain.diary.repository.DiaryRepository;
 import com.seoulaim.domain.inquiry.service.RefundRequestQueryService;
+import com.seoulaim.domain.order.gateway.PaymentCancelResult;
 import com.seoulaim.domain.order.gateway.PaymentGateway;
 import com.seoulaim.domain.order.gateway.PaymentResult;
 import com.seoulaim.global.config.DiaryProperties;
@@ -24,6 +26,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +46,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class DiaryPaymentService {
 
   static final String ORDER_NAME = "Seoulaim Diary";
+  // 네트워크 타임아웃 뒤 재시도처럼 토스에서는 이미 취소된 결제. 환불 완료로 본다
+  static final String ALREADY_CANCELED_CODE = "ALREADY_CANCELED_PAYMENT";
   private static final List<DiaryPaymentStatus> HISTORY_STATUSES =
       List.of(DiaryPaymentStatus.PAID, DiaryPaymentStatus.REFUNDED);
   private static final DateTimeFormatter ORDER_DATE_FORMAT =
@@ -137,7 +142,8 @@ public class DiaryPaymentService {
       }
       case PaymentResult.Failure failure -> {
         payment.markFailed(request.paymentKey(), failure.code(), failure.message());
-        throw new BusinessException(ErrorCode.PAYMENT_FAILED, failureFields(failure));
+        throw new BusinessException(
+            ErrorCode.PAYMENT_FAILED, failureFields(failure.code(), failure.message()));
       }
     }
   }
@@ -200,6 +206,70 @@ public class DiaryPaymentService {
         .toList();
   }
 
+  /** 환불 관리용 결제 정보 (다이어리 포함). 없는 id 는 빠진다. */
+  public List<PaymentRefundInfo> findRefundInfos(Collection<UUID> paymentIds) {
+    if (paymentIds.isEmpty()) {
+      return List.of();
+    }
+    List<DiaryPayment> payments = diaryPaymentRepository.findAllById(paymentIds);
+    Map<UUID, Diary> diaries =
+        diaryRepository
+            .findAllByIdIn(payments.stream().map(DiaryPayment::getDiaryId).distinct().toList())
+            .stream()
+            .collect(Collectors.toMap(Diary::getId, Function.identity()));
+    return payments.stream()
+        .map(payment -> PaymentRefundInfo.of(payment, diaries.get(payment.getDiaryId())))
+        .toList();
+  }
+
+  /**
+   * 어드민 환불 승인: 토스 결제를 전액 취소하고 결제를 REFUNDED 로, 다이어리를 환불 정책 제3조 3·4항대로 처리한다.
+   *
+   * <ul>
+   *   <li>첫(무료) 다이어리: paid=false 만. 꾸민 내용은 남는다
+   *   <li>그 외: soft delete
+   * </ul>
+   *
+   * <p>토스가 취소를 거절하면 아무것도 바꾸지 않고 PAYMENT_REFUND_FAILED(fields 에 토스 code/message). 결제 행을 잠가 동시 승인이 두
+   * 번 취소하지 않게 한다.
+   */
+  @Transactional
+  public PaymentRefundInfo refund(UUID paymentId, String cancelReason) {
+    DiaryPayment payment =
+        diaryPaymentRepository
+            .findWithLockById(paymentId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
+    if (!payment.isPaid()) {
+      throw new BusinessException(
+          ErrorCode.PAYMENT_REFUND_FAILED,
+          Map.of("code", "NOT_PAID", "message", "결제 완료(PAID) 상태가 아닙니다: " + payment.getStatus()));
+    }
+    PaymentCancelResult result = paymentGateway.cancel(payment.getTossPaymentKey(), cancelReason);
+    Instant now = clock.instant();
+    switch (result) {
+      case PaymentCancelResult.Success success ->
+          payment.markRefunded(
+              success.cancelKey(), success.canceledAt() == null ? now : success.canceledAt());
+      case PaymentCancelResult.Failure failure when ALREADY_CANCELED_CODE.equals(failure.code()) ->
+          payment.markRefunded(null, now);
+      case PaymentCancelResult.Failure failure ->
+          throw new BusinessException(
+              ErrorCode.PAYMENT_REFUND_FAILED, failureFields(failure.code(), failure.message()));
+    }
+
+    Diary diary =
+        diaryRepository
+            .findById(payment.getDiaryId())
+            .orElseThrow(() -> new BusinessException(ErrorCode.DIARY_NOT_FOUND));
+    if (diary.isFree()) {
+      diary.revokePaid();
+    } else if (!diary.isDeleted()) {
+      // TODO(#55): 삭제한 다이어리의 사진·완성 페이지 S3 객체 정리. 지금은 soft delete 만
+      diary.delete(now);
+    }
+    return PaymentRefundInfo.of(payment, diary);
+  }
+
   // DIA-yyyyMMdd-10자리. 토스 orderId 규칙(6~64자, 영숫자·-·_)을 만족한다
   private static String generateOrderNumber(Instant now) {
     StringBuilder builder =
@@ -210,11 +280,11 @@ public class DiaryPaymentService {
     return builder.toString();
   }
 
-  private static Map<String, String> failureFields(PaymentResult.Failure failure) {
+  private static Map<String, String> failureFields(String code, String message) {
     Map<String, String> fields = new LinkedHashMap<>();
-    fields.put("code", failure.code());
-    if (failure.message() != null) {
-      fields.put("message", failure.message());
+    fields.put("code", code);
+    if (message != null) {
+      fields.put("message", message);
     }
     return fields;
   }
