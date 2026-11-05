@@ -132,7 +132,7 @@ public class AdminContentController {
     return adminBannerService.getBanner(bannerId);
   }
 
-  @Operation(summary = "[관리자] 배너 등록 (켜진 상태로 그 위치 맨 뒤에 추가)")
+  @Operation(summary = "[관리자] 배너 등록 (켜진 상태로 그 위치 맨 뒤에 추가, isDefault 또는 첫 배너면 기본)")
   @PostMapping("/banners")
   @ResponseStatus(HttpStatus.CREATED)
   public AdminBannerResponse createBanner(@Valid @RequestBody AdminBannerRequest request) {
@@ -158,6 +158,12 @@ public class AdminContentController {
   public AdminBannerResponse changeBannerEnabled(
       @PathVariable UUID bannerId, @Valid @RequestBody AdminBannerEnabledRequest request) {
     return adminBannerService.changeEnabled(bannerId, request.enabled());
+  }
+
+  @Operation(summary = "[관리자] 기본 배너 지정 (이전 기본 배너는 해제, 그 위치 배너 목록 반환)")
+  @PatchMapping("/banners/{bannerId}/default")
+  public List<AdminBannerResponse> changeDefaultBanner(@PathVariable UUID bannerId) {
+    return adminBannerService.changeDefault(bannerId);
   }
 
   @Operation(summary = "[관리자] 배너 삭제 (기본 배너는 409)")

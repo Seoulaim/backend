@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.seoulaim.domain.content.admin.dto.AdminBannerRequest;
 import com.seoulaim.domain.content.admin.dto.AdminBirthdayCafeRequest;
 import com.seoulaim.domain.content.admin.dto.AdminBirthdayCafeResponse;
 import com.seoulaim.domain.content.admin.dto.AdminCalendarEntryRequest;
@@ -66,6 +67,42 @@ class AdminContentControllerTest {
                 .content("{\"enabled\": false}"))
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.code").value("CONTENT_DEFAULT_BANNER"));
+  }
+
+  @Test
+  @DisplayName("배너 등록 요청의 isDefault 를 받아 서비스에 넘긴다")
+  void createBanner_isDefault_바인딩() throws Exception {
+    ArgumentCaptor<AdminBannerRequest> captor = ArgumentCaptor.forClass(AdminBannerRequest.class);
+    given(adminBannerService.createBanner(any())).willReturn(null);
+
+    mockMvc
+        .perform(
+            post("/api/v1/admin/banners")
+                .header("X-Admin-Key", ADMIN_KEY)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"placement": "HOME", "adminTitle": "새 기본", "title": {"en": "Hi"},
+                     "targetType": "DIARY", "isDefault": true}
+                    """))
+        .andExpect(status().isCreated());
+
+    verify(adminBannerService).createBanner(captor.capture());
+    assertThat(captor.getValue().isDefault()).isTrue();
+  }
+
+  @Test
+  @DisplayName("기본 배너 지정은 PATCH /banners/{id}/default 이고 그 위치 배너 목록을 반환한다")
+  void changeDefaultBanner_200() throws Exception {
+    UUID id = UUID.randomUUID();
+    given(adminBannerService.changeDefault(id)).willReturn(List.of());
+
+    mockMvc
+        .perform(patch("/api/v1/admin/banners/{id}/default", id).header("X-Admin-Key", ADMIN_KEY))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$").isArray());
+
+    verify(adminBannerService).changeDefault(id);
   }
 
   @Test

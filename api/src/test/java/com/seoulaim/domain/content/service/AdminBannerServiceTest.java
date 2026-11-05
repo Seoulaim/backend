@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.assertj.core.groups.Tuple;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -65,6 +66,11 @@ class AdminBannerServiceTest {
 
   private static AdminBannerRequest request(
       BannerPlacement placement, BannerTargetType targetType, String targetUrl) {
+    return request(placement, targetType, targetUrl, null);
+  }
+
+  private static AdminBannerRequest request(
+      BannerPlacement placement, BannerTargetType targetType, String targetUrl, Boolean isDefault) {
     return new AdminBannerRequest(
         placement,
         "ATEEZ 팝업",
@@ -76,7 +82,25 @@ class AdminBannerServiceTest {
         targetType,
         targetUrl,
         START,
+        END,
+        isDefault);
+  }
+
+  // 기간이 있고 꺼진 일반 배너
+  private static Banner periodBanner() {
+    Banner banner = banner(false);
+    banner.update(
+        "기간 배너",
+        null,
+        Map.of("en", "Period"),
+        null,
+        null,
+        BannerTargetType.DIARY,
+        null,
+        START,
         END);
+    banner.changeEnabled(false);
+    return banner;
   }
 
   @Test
@@ -136,6 +160,8 @@ class AdminBannerServiceTest {
   @Test
   @DisplayName("새 배너는 켜진 상태로 그 위치 맨 뒤 순서에 추가된다")
   void createBanner_맨뒤에켜진상태() {
+    given(bannerRepository.findAllByPlacementForUpdate(BannerPlacement.HOME))
+        .willReturn(List.of(banner(true)));
     given(bannerRepository.findMaxDisplayOrder(BannerPlacement.HOME)).willReturn(3);
     given(bannerRepository.save(any(Banner.class))).willAnswer(inv -> inv.getArgument(0));
 
@@ -147,6 +173,115 @@ class AdminBannerServiceTest {
     assertThat(response.enabled()).isTrue();
     assertThat(response.isDefault()).isFalse();
     assertThat(response.startDate()).isEqualTo(START);
+  }
+
+  @Test
+  @DisplayName("기본 배너를 바꾸면 이전 기본은 해제만 되고(enabled 유지), 새 기본은 켜지고 기간이 지워진다")
+  void changeDefault_이전기본해제_기간초기화() {
+    Banner previous = banner(true);
+    Banner target = periodBanner();
+    given(bannerRepository.findPlacementById(target.getId()))
+        .willReturn(Optional.of(BannerPlacement.HOME));
+    given(bannerRepository.findAllByPlacementForUpdate(BannerPlacement.HOME))
+        .willReturn(List.of(previous, target));
+
+    List<AdminBannerResponse> response = adminBannerService.changeDefault(target.getId());
+
+    assertThat(previous.isDefault()).isFalse();
+    assertThat(previous.isEnabled()).isTrue();
+    assertThat(target.isDefault()).isTrue();
+    assertThat(target.isEnabled()).isTrue();
+    assertThat(target.getStartDate()).isNull();
+    assertThat(target.getEndDate()).isNull();
+    assertThat(response)
+        .extracting(AdminBannerResponse::id, AdminBannerResponse::isDefault)
+        .containsExactly(Tuple.tuple(previous.getId(), false), Tuple.tuple(target.getId(), true));
+    // 이전 기본 해제를 먼저 flush (위치별 unique index)
+    verify(bannerRepository).flush();
+  }
+
+  @Test
+  @DisplayName("이미 기본인 배너를 기본으로 지정하면 아무것도 바꾸지 않는다")
+  void changeDefault_이미기본_변경없음() {
+    Banner current = banner(true);
+    given(bannerRepository.findPlacementById(current.getId()))
+        .willReturn(Optional.of(BannerPlacement.HOME));
+    given(bannerRepository.findAllByPlacementForUpdate(BannerPlacement.HOME))
+        .willReturn(List.of(current));
+
+    assertThat(adminBannerService.changeDefault(current.getId()))
+        .extracting(AdminBannerResponse::isDefault)
+        .containsExactly(true);
+    verify(bannerRepository, never()).flush();
+  }
+
+  @Test
+  @DisplayName("없는 배너를 기본으로 지정하면 CONTENT_NOT_FOUND")
+  void changeDefault_없음_404() {
+    UUID id = UUID.randomUUID();
+    given(bannerRepository.findPlacementById(id)).willReturn(Optional.empty());
+
+    assertThatThrownBy(() -> adminBannerService.changeDefault(id))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.CONTENT_NOT_FOUND);
+  }
+
+  @Test
+  @DisplayName("기본에서 해제된 배너는 삭제할 수 있다")
+  void deleteBanner_기본해제후_삭제가능() {
+    Banner previous = banner(true);
+    Banner target = banner(false);
+    given(bannerRepository.findPlacementById(target.getId()))
+        .willReturn(Optional.of(BannerPlacement.HOME));
+    given(bannerRepository.findAllByPlacementForUpdate(BannerPlacement.HOME))
+        .willReturn(List.of(previous, target));
+    adminBannerService.changeDefault(target.getId());
+    given(bannerRepository.findById(previous.getId())).willReturn(Optional.of(previous));
+
+    adminBannerService.deleteBanner(previous.getId());
+
+    verify(bannerRepository).delete(previous);
+  }
+
+  @Test
+  @DisplayName("isDefault=true 로 생성하면 이전 기본을 해제하고 기간 없이 켜진 기본 배너로 만든다")
+  void createBanner_isDefault_기본으로생성() {
+    Banner previous = banner(true);
+    given(bannerRepository.findAllByPlacementForUpdate(BannerPlacement.HOME))
+        .willReturn(List.of(previous));
+    given(bannerRepository.findMaxDisplayOrder(BannerPlacement.HOME)).willReturn(0);
+    given(bannerRepository.save(any(Banner.class))).willAnswer(inv -> inv.getArgument(0));
+
+    AdminBannerResponse response =
+        adminBannerService.createBanner(
+            request(BannerPlacement.HOME, BannerTargetType.DIARY, null, true));
+
+    assertThat(previous.isDefault()).isFalse();
+    assertThat(previous.isEnabled()).isTrue();
+    assertThat(response.isDefault()).isTrue();
+    assertThat(response.enabled()).isTrue();
+    assertThat(response.startDate()).isNull();
+    assertThat(response.endDate()).isNull();
+    assertThat(response.displayOrder()).isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("위치에 배너가 하나도 없으면 isDefault 를 보내지 않아도(false 여도) 기본 배너로 생성된다")
+  void createBanner_빈위치_자동기본() {
+    given(bannerRepository.findAllByPlacementForUpdate(BannerPlacement.DIARY))
+        .willReturn(List.of());
+    given(bannerRepository.findMaxDisplayOrder(BannerPlacement.DIARY)).willReturn(-1);
+    given(bannerRepository.save(any(Banner.class))).willAnswer(inv -> inv.getArgument(0));
+
+    AdminBannerResponse response =
+        adminBannerService.createBanner(
+            request(BannerPlacement.DIARY, BannerTargetType.DIARY, null, false));
+
+    assertThat(response.isDefault()).isTrue();
+    assertThat(response.startDate()).isNull();
+    assertThat(response.displayOrder()).isZero();
+    verify(bannerRepository, never()).flush();
   }
 
   @Test

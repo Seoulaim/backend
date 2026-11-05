@@ -18,7 +18,7 @@ import org.hibernate.type.SqlTypes;
  * 홈(HH01)·다이어리(DD01) 배너 (어드민 "프로모션 관리")
  *
  * <ul>
- *   <li>기본 배너: 위치별 1개(마이그레이션에서 생성). 항상 노출, 기간 없음, 끄기·삭제 불가
+ *   <li>기본 배너: 위치별 1개(처음엔 마이그레이션이 생성, 어드민이 다른 배너로 바꿀 수 있음). 항상 노출, 기간 없음, 끄기·삭제 불가
  *   <li>그 밖의 배너: enabled 이고 KST 오늘이 기간 안(종료일 포함)일 때 노출. 기간이 끝나도 enabled 는 그대로
  * </ul>
  */
@@ -66,7 +66,7 @@ public class Banner extends BaseEntity {
   @Column(name = "enabled", nullable = false)
   private boolean enabled;
 
-  @Column(name = "is_default", nullable = false, updatable = false)
+  @Column(name = "is_default", nullable = false)
   private boolean isDefault;
 
   @Column(name = "display_order", nullable = false)
@@ -123,6 +123,22 @@ public class Banner extends BaseEntity {
     this.targetUrl = targetUrl;
     this.startDate = isDefault ? null : startDate;
     this.endDate = isDefault ? null : endDate;
+  }
+
+  /**
+   * 이 위치의 기본 배너로 지정한다. CHECK 제약(기본이면 enabled·기간 null)에 맞춰 켜고 기간을 지운다. 이전 기본 배너는 먼저 {@link
+   * #unmarkDefault()} 후 flush 해야 한다 (위치별 partial unique index).
+   */
+  public void markDefault() {
+    this.isDefault = true;
+    this.enabled = true;
+    this.startDate = null;
+    this.endDate = null;
+  }
+
+  /** 기본 배너 해제. enabled·기간은 그대로 둔다 (기본 배너였으므로 켜짐·기간 없음 상태). */
+  public void unmarkDefault() {
+    this.isDefault = false;
   }
 
   /** 기본 배너는 호출하지 않는다 (서비스에서 CONTENT_DEFAULT_BANNER). */

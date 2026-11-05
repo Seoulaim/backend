@@ -17,6 +17,8 @@ import java.util.UUID;
  *   <li>title·description·ctaLabel: { en, ko, zh, ja }. title 의 en 필수, ctaLabel 은 DIARY 만 앱에 내려감
  *   <li>targetType URL 이면 targetUrl 필수
  *   <li>startDate·endDate: KST, 종료일 포함. 생략하면 그쪽 제한 없음. 기본 배너는 무시하고 null
+ *   <li>isDefault: 생성에서만 사용. true 면 그 위치의 기본 배너로 만든다(이전 기본 배너는 해제). 위치에 배너가 하나도 없으면 값과 무관하게 기본.
+ *       수정에선 무시 (PATCH /{id}/default 사용)
  *   <li>imageFileId 생략: 생성은 사진 없음, 수정은 기존 유지. removeImage=true 면 사진 제거
  * </ul>
  */
@@ -31,4 +33,5 @@ public record AdminBannerRequest(
     @NotNull BannerTargetType targetType,
     @Size(max = 1000) String targetUrl,
     LocalDate startDate,
-    LocalDate endDate) {}
+    LocalDate endDate,
+    Boolean isDefault) {}
