@@ -15,11 +15,13 @@ import com.seoulaim.domain.diary.dto.DiaryPaymentConfirmResponse;
 import com.seoulaim.domain.diary.dto.DiaryPaymentCreateRequest;
 import com.seoulaim.domain.diary.dto.DiaryPaymentCreateResponse;
 import com.seoulaim.domain.diary.dto.MyPaymentResponse;
+import com.seoulaim.domain.diary.dto.RefundRequestCheck;
 import com.seoulaim.domain.diary.entity.Diary;
 import com.seoulaim.domain.diary.entity.DiaryPayment;
 import com.seoulaim.domain.diary.entity.DiaryPaymentStatus;
 import com.seoulaim.domain.diary.repository.DiaryPaymentRepository;
 import com.seoulaim.domain.diary.repository.DiaryRepository;
+import com.seoulaim.domain.inquiry.service.RefundRequestQueryService;
 import com.seoulaim.domain.order.gateway.PaymentGateway;
 import com.seoulaim.domain.order.gateway.PaymentResult;
 import com.seoulaim.global.config.DiaryProperties;
@@ -33,6 +35,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -53,6 +56,7 @@ class DiaryPaymentServiceTest {
   @Mock private DiaryRepository diaryRepository;
   @Mock private DiaryPaymentRepository diaryPaymentRepository;
   @Mock private PaymentGateway paymentGateway;
+  @Mock private RefundRequestQueryService refundRequestQueryService;
 
   private DiaryPaymentService diaryPaymentService;
 
@@ -64,6 +68,7 @@ class DiaryPaymentServiceTest {
             diaryRepository,
             diaryPaymentRepository,
             paymentGateway,
+            refundRequestQueryService,
             new DiaryProperties(PRICE, 2),
             new TossPaymentProperties("test_sk", "test_ck"),
             Clock.fixed(NOW, ZoneOffset.UTC));
@@ -282,6 +287,7 @@ class DiaryPaymentServiceTest {
                 USER_ID, List.of(DiaryPaymentStatus.PAID, DiaryPaymentStatus.REFUNDED)))
         .willReturn(List.of(fresh, edited, old, ofFinalized, ofDeleted));
     given(diaryRepository.findAllByIdIn(any())).willReturn(List.of(editing, finalized, deleted));
+    given(refundRequestQueryService.findRequestedPaymentIds(any())).willReturn(Set.of());
 
     List<MyPaymentResponse> responses = diaryPaymentService.getMyPayments(USER_ID);
 
@@ -293,6 +299,7 @@ class DiaryPaymentServiceTest {
             tuple(false, false),
             tuple(false, false),
             tuple(true, true));
+    assertThat(responses).noneMatch(MyPaymentResponse::refundRequested);
     assertThat(responses.get(0).name()).isEqualTo(Diary.DEFAULT_NAME);
     assertThat(responses.get(4).name()).isNull();
     assertThat(responses.get(4).thumbnailKey()).isNull();
@@ -302,6 +309,97 @@ class DiaryPaymentServiceTest {
     DiaryPayment payment =
         DiaryPayment.createPending(diary.getId(), USER_ID, "DIA-" + UUID.randomUUID(), PRICE, NOW);
     payment.markPaid("pk", paidAt);
+    return payment;
+  }
+
+  @Test
+  @DisplayName("결제 내역: 처리 대기 환불 문의가 있으면 refundRequested=true, refundable·withinPolicy=false")
+  void getMyPayments_환불요청중_refundable아님() {
+    Diary diary = Diary.create(USER_ID, false);
+    DiaryPayment requested = paid(diary, NOW.minus(Duration.ofDays(1)));
+    DiaryPayment other = paid(diary, NOW.minus(Duration.ofDays(1)));
+    given(
+            diaryPaymentRepository.findAllByUserIdAndStatusInOrderByPaidAtDescIdDesc(
+                USER_ID, List.of(DiaryPaymentStatus.PAID, DiaryPaymentStatus.REFUNDED)))
+        .willReturn(List.of(requested, other));
+    given(diaryRepository.findAllByIdIn(any())).willReturn(List.of(diary));
+    given(
+            refundRequestQueryService.findRequestedPaymentIds(
+                List.of(requested.getId(), other.getId())))
+        .willReturn(Set.of(requested.getId()));
+
+    List<MyPaymentResponse> responses = diaryPaymentService.getMyPayments(USER_ID);
+
+    assertThat(responses)
+        .extracting(
+            MyPaymentResponse::refundRequested,
+            MyPaymentResponse::refundable,
+            MyPaymentResponse::withinPolicy)
+        .containsExactly(tuple(true, false, false), tuple(false, true, true));
+  }
+
+  @Test
+  @DisplayName("환불 정책 판정: 7일 이내·미완성·편집 없음이면 정책 안")
+  void checkRefundRequest_정상_정책안() {
+    Diary diary = Diary.create(USER_ID, false);
+    DiaryPayment payment = givenOwnedPayment(diary, NOW.minus(Duration.ofDays(6)));
+
+    assertThat(diaryPaymentService.checkRefundRequest(USER_ID, payment.getId()))
+        .contains(new RefundRequestCheck(payment.getId(), true));
+  }
+
+  @Test
+  @DisplayName("환불 정책 판정: 결제 후 7일이 지나면 정책 밖 (접수는 가능)")
+  void checkRefundRequest_7일초과_정책밖() {
+    Diary diary = Diary.create(USER_ID, false);
+    DiaryPayment payment =
+        givenOwnedPayment(diary, NOW.minus(Duration.ofDays(7)).minus(Duration.ofMinutes(1)));
+
+    assertThat(diaryPaymentService.checkRefundRequest(USER_ID, payment.getId()))
+        .contains(new RefundRequestCheck(payment.getId(), false));
+  }
+
+  @Test
+  @DisplayName("환불 정책 판정: 결제 후 편집 이력이 있으면 정책 밖")
+  void checkRefundRequest_편집후_정책밖() {
+    Diary diary = Diary.create(USER_ID, false);
+    DiaryPayment payment = givenOwnedPayment(diary, NOW.minus(Duration.ofDays(1)));
+    payment.recordEdited(NOW.minus(Duration.ofHours(1)));
+
+    assertThat(diaryPaymentService.checkRefundRequest(USER_ID, payment.getId()))
+        .contains(new RefundRequestCheck(payment.getId(), false));
+  }
+
+  @Test
+  @DisplayName("환불 정책 판정: 완성(FINALIZED)한 다이어리면 정책 밖")
+  void checkRefundRequest_완성후_정책밖() {
+    Diary diary = Diary.create(USER_ID, false);
+    diary.finalizeWith(List.of(), Map.of(), NOW);
+    DiaryPayment payment = givenOwnedPayment(diary, NOW.minus(Duration.ofDays(1)));
+
+    assertThat(diaryPaymentService.checkRefundRequest(USER_ID, payment.getId()))
+        .contains(new RefundRequestCheck(payment.getId(), false));
+  }
+
+  @Test
+  @DisplayName("환불 정책 판정: PAID 가 아니거나 남의 결제면 empty")
+  void checkRefundRequest_PAID아님_empty() {
+    Diary diary = Diary.create(USER_ID, false);
+    DiaryPayment pending = DiaryPayment.createPending(diary.getId(), USER_ID, "DIA-P", PRICE, NOW);
+    given(diaryPaymentRepository.findByIdAndUserId(pending.getId(), USER_ID))
+        .willReturn(Optional.of(pending));
+    UUID others = UUID.randomUUID();
+    given(diaryPaymentRepository.findByIdAndUserId(others, USER_ID)).willReturn(Optional.empty());
+
+    assertThat(diaryPaymentService.checkRefundRequest(USER_ID, pending.getId())).isEmpty();
+    assertThat(diaryPaymentService.checkRefundRequest(USER_ID, others)).isEmpty();
+  }
+
+  private DiaryPayment givenOwnedPayment(Diary diary, Instant paidAt) {
+    DiaryPayment payment = paid(diary, paidAt);
+    given(diaryPaymentRepository.findByIdAndUserId(payment.getId(), USER_ID))
+        .willReturn(Optional.of(payment));
+    given(diaryRepository.findById(diary.getId())).willReturn(Optional.of(diary));
     return payment;
   }
 }

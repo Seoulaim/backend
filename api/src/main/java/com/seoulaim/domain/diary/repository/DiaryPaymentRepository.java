@@ -16,6 +16,8 @@ public interface DiaryPaymentRepository extends JpaRepository<DiaryPayment, UUID
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   Optional<DiaryPayment> findWithLockByIdAndUserId(UUID id, UUID userId);
 
+  Optional<DiaryPayment> findByIdAndUserId(UUID id, UUID userId);
+
   List<DiaryPayment> findAllByDiaryIdAndStatus(UUID diaryId, DiaryPaymentStatus status);
 
   Optional<DiaryPayment> findFirstByDiaryIdAndStatusOrderByPaidAtDescIdDesc(

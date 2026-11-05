@@ -6,11 +6,13 @@ import com.seoulaim.domain.diary.dto.DiaryPaymentConfirmResponse;
 import com.seoulaim.domain.diary.dto.DiaryPaymentCreateRequest;
 import com.seoulaim.domain.diary.dto.DiaryPaymentCreateResponse;
 import com.seoulaim.domain.diary.dto.MyPaymentResponse;
+import com.seoulaim.domain.diary.dto.RefundRequestCheck;
 import com.seoulaim.domain.diary.entity.Diary;
 import com.seoulaim.domain.diary.entity.DiaryPayment;
 import com.seoulaim.domain.diary.entity.DiaryPaymentStatus;
 import com.seoulaim.domain.diary.repository.DiaryPaymentRepository;
 import com.seoulaim.domain.diary.repository.DiaryRepository;
+import com.seoulaim.domain.inquiry.service.RefundRequestQueryService;
 import com.seoulaim.domain.order.gateway.PaymentGateway;
 import com.seoulaim.domain.order.gateway.PaymentResult;
 import com.seoulaim.global.config.DiaryProperties;
@@ -25,6 +27,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -51,6 +55,7 @@ public class DiaryPaymentService {
   private final DiaryRepository diaryRepository;
   private final DiaryPaymentRepository diaryPaymentRepository;
   private final PaymentGateway paymentGateway;
+  private final RefundRequestQueryService refundRequestQueryService;
   private final DiaryProperties diaryProperties;
   private final TossPaymentProperties tossPaymentProperties;
   private final Clock clock;
@@ -146,7 +151,28 @@ public class DiaryPaymentService {
         .ifPresent(payment -> payment.recordEdited(clock.instant()));
   }
 
-  /** PAID·REFUNDED 결제 내역 최신순. */
+  /**
+   * 환불 문의 접수용: 본인의 PAID 결제면 지금 시점의 환불 정책 판정을 돌려준다. 없거나 남의 것이거나 PAID 가 아니면 empty.
+   *
+   * <p>다이어리가 soft delete 됐어도 결제는 환불 대상이다.
+   */
+  public Optional<RefundRequestCheck> checkRefundRequest(UUID userId, UUID paymentId) {
+    return diaryPaymentRepository
+        .findByIdAndUserId(paymentId, userId)
+        .filter(DiaryPayment::isPaid)
+        .map(
+            payment -> {
+              boolean finalized =
+                  diaryRepository
+                      .findById(payment.getDiaryId())
+                      .map(Diary::isFinalized)
+                      .orElse(false);
+              return new RefundRequestCheck(
+                  payment.getId(), payment.isWithinRefundPolicy(clock.instant(), finalized));
+            });
+  }
+
+  /** PAID·REFUNDED 결제 내역 최신순. 처리 대기 환불 문의가 있는 결제는 refundable=false. */
   public List<MyPaymentResponse> getMyPayments(UUID userId) {
     List<DiaryPayment> payments =
         diaryPaymentRepository.findAllByUserIdAndStatusInOrderByPaidAtDescIdDesc(
@@ -159,9 +185,18 @@ public class DiaryPaymentService {
             .findAllByIdIn(payments.stream().map(DiaryPayment::getDiaryId).distinct().toList())
             .stream()
             .collect(Collectors.toMap(Diary::getId, Function.identity()));
+    Set<UUID> refundRequested =
+        refundRequestQueryService.findRequestedPaymentIds(
+            payments.stream().map(DiaryPayment::getId).toList());
     Instant now = clock.instant();
     return payments.stream()
-        .map(payment -> MyPaymentResponse.of(payment, diaries.get(payment.getDiaryId()), now))
+        .map(
+            payment ->
+                MyPaymentResponse.of(
+                    payment,
+                    diaries.get(payment.getDiaryId()),
+                    now,
+                    refundRequested.contains(payment.getId())))
         .toList();
   }
 

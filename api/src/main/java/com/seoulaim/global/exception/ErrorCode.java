@@ -97,6 +97,7 @@ public enum ErrorCode {
   PAYMENT_ALREADY_PAID(HttpStatus.CONFLICT, "PAYMENT_ALREADY_PAID", "이미 결제가 완료되었습니다"),
   PAYMENT_CONSENT_REQUIRED(
       HttpStatus.BAD_REQUEST, "PAYMENT_CONSENT_REQUIRED", "환불 규정에 동의해야 결제할 수 있습니다"),
+  PAYMENT_REFUND_FAILED(HttpStatus.BAD_GATEWAY, "PAYMENT_REFUND_FAILED", "결제 취소(환불)에 실패했습니다"),
 
   // DIARY
   DIARY_NOT_FOUND(HttpStatus.NOT_FOUND, "DIARY_NOT_FOUND", "다이어리를 찾을 수 없습니다"),
@@ -123,6 +124,17 @@ public enum ErrorCode {
   CONTENT_NOT_FOUND(HttpStatus.NOT_FOUND, "CONTENT_NOT_FOUND", "콘텐츠를 찾을 수 없습니다"),
   CONTENT_DEFAULT_BANNER(HttpStatus.CONFLICT, "CONTENT_DEFAULT_BANNER", "기본 배너는 끄거나 삭제할 수 없습니다"),
   CONTENT_INVALID_GROUP(HttpStatus.BAD_REQUEST, "CONTENT_INVALID_GROUP", "존재하지 않는 그룹 또는 멤버입니다"),
+
+  // INQUIRY
+  INQUIRY_NOT_FOUND(HttpStatus.NOT_FOUND, "INQUIRY_NOT_FOUND", "문의를 찾을 수 없습니다"),
+  INQUIRY_INVALID(HttpStatus.BAD_REQUEST, "INQUIRY_INVALID", "문의 내용이 올바르지 않습니다"),
+  INQUIRY_REFUND_ALREADY_REQUESTED(
+      HttpStatus.CONFLICT, "INQUIRY_REFUND_ALREADY_REQUESTED", "이미 환불을 요청했거나 환불된 결제입니다"),
+  INQUIRY_ALREADY_DECIDED(HttpStatus.CONFLICT, "INQUIRY_ALREADY_DECIDED", "이미 처리된 환불 요청입니다"),
+  INQUIRY_POLICY_EXCEPTION_REQUIRED(
+      HttpStatus.BAD_REQUEST,
+      "INQUIRY_POLICY_EXCEPTION_REQUIRED",
+      "환불 정책 밖 요청은 예외 사유가 있어야 승인할 수 있습니다"),
   ;
 
   private final HttpStatus status;
