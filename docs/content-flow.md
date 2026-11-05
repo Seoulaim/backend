@@ -16,7 +16,7 @@
  │ POST/PUT /admin/calendar-entries  { …, imageFileId } ─▶ 팬캘린더·Event coming up
  │ POST/PUT /admin/birthday-cafes    { …, imageFileId } ─▶ 생일카페
  │ POST/PUT /admin/banners           { …, imageFileId } ─▶ 홈·다이어리 배너
- │ PATCH /admin/banners/{id}/enabled, PUT /admin/banners/reorder
+ │ PATCH /admin/banners/{id}/enabled, PATCH /admin/banners/{id}/default, PUT /admin/banners/reorder
 
 회원 앱 (토큰 선택)
  │ GET /home/promos ─────────────────▶ 홈 메인 배너
@@ -160,10 +160,11 @@
 |---|---|---|
 | GET | `/banners?placement=HOME\|DIARY` | 지정: 그 위치의 어드민 순서. 생략: 전체 최신순 |
 | GET | `/banners/{id}` | 상세 |
-| POST | `/banners` | 201. 켜진 상태로 그 위치 맨 뒤에 추가 |
+| POST | `/banners` | 201. 켜진 상태로 그 위치 맨 뒤에 추가. `isDefault: true` 면 기본 배너로 생성(아래 기본 배너 전환과 같음). 그 위치에 배너가 하나도 없으면 `isDefault` 와 무관하게 기본 |
 | PUT | `/banners/{id}` | 200. `placement` 는 무시(변경 불가). 기본 배너는 기간이 null 로 고정 |
 | PATCH | `/banners/{id}/enabled` `{ "enabled": false }` | 200 배너. 기본 배너면 409 `CONTENT_DEFAULT_BANNER` |
-| DELETE | `/banners/{id}` | 204. 기본 배너면 409 `CONTENT_DEFAULT_BANNER` |
+| PATCH | `/banners/{id}/default` | 200 그 위치의 배너 목록(어드민 순서). 그 배너를 위치의 기본 배너로 지정. 이미 기본이면 변화 없음 |
+| DELETE | `/banners/{id}` | 204. 기본 배너면 409 `CONTENT_DEFAULT_BANNER` (다른 배너를 기본으로 바꾼 뒤엔 삭제 가능) |
 | PUT | `/banners/reorder` `{ "placement": "HOME", "ids": [...] }` | 200 새 순서의 배너 목록. `ids` 는 그 위치 배너 **전부**(기본 배너 포함), 빠지거나 중복이면 400 |
 
 요청
@@ -172,8 +173,10 @@
 { "placement": "HOME", "adminTitle": "ATEEZ 팝업 데자뷰", "imageFileId": "019a…",
   "title": { "en": "ANITEEZ IN DEJAVU" }, "description": { "en": "ATEEZ pop-up store in Seoul" },
   "ctaLabel": {}, "targetType": "URL", "targetUrl": "https://example.com/aniteez-in-dejavu",
-  "startDate": "2026-11-01", "endDate": "2026-11-09" }
+  "startDate": "2026-11-01", "endDate": "2026-11-09", "isDefault": false }
 ```
+
+- `isDefault`: 생성에서만 쓰는 선택 값. 수정(`PUT`)에선 무시한다 (기본 전환은 `PATCH /{id}/default`)
 
 응답
 
@@ -188,7 +191,19 @@
 
 - `targetType: "URL"` → `targetUrl` 필수
 - `startDate`·`endDate` 는 각각 생략 가능(그쪽 제한 없음). 기간이 끝나도 `enabled` 는 바뀌지 않고 서버가 날짜로만 거른다
-- 기본 배너: 위치별 1개(마이그레이션에서 생성), 항상 노출. 문구·이미지·이동 대상은 수정할 수 있다
+- 기본 배너: 위치별 1개, 항상 노출. 문구·이미지·이동 대상은 수정할 수 있다. 처음엔 마이그레이션이 만든 `"Default"` 배너
+
+#### 기본 배너 전환 (`PATCH /banners/{id}/default`, `POST` 의 `isDefault: true`)
+
+한 트랜잭션에서 처리한다.
+
+| 대상 | 바뀌는 것 |
+|---|---|
+| 이전 기본 배너 | `isDefault: false` 만. `enabled`(켜짐)·기간(없음)은 그대로 → 계속 노출되는 일반 배너가 된다. 끄기·삭제 가능 |
+| 새 기본 배너 | `isDefault: true`, `enabled: true`, `startDate`·`endDate` 를 null 로 (기본 배너 제약) |
+
+- 이전 기본 배너를 숨기려면 전환 후 `PATCH /{id}/enabled { "enabled": false }` 또는 삭제
+- 마이그레이션의 `"Default"` 배너도 다른 배너와 똑같이 다룬다 (전환 후 삭제 가능)
 
 ### 이미지 규칙 (세 리소스 공통)
 
@@ -202,7 +217,7 @@
 | 코드 | HTTP | 언제 |
 |---|---|---|
 | `CONTENT_NOT_FOUND` | 404 | 없는 캘린더 항목·생일카페·배너 |
-| `CONTENT_DEFAULT_BANNER` | 409 | 기본 배너 끄기·삭제 |
+| `CONTENT_DEFAULT_BANNER` | 409 | 기본 배너 끄기·삭제 (먼저 다른 배너를 기본으로 지정) |
 | `CONTENT_INVALID_GROUP` | 400 | 없는 그룹(`fields.groupIds`)·멤버(`fields.artistId`) |
 | `COMMON_INVALID_REQUEST` | 400 | en 누락, 기간 역전, 색 누락, 사진·종료일 조건, reorder 목록 불일치 등 (`fields` 에 사유) |
 | `FILE_NOT_FOUND` | 404 | 없는 `imageFileId` |

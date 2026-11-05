@@ -16,6 +16,7 @@ import com.seoulaim.domain.content.entity.CalendarEntry;
 import com.seoulaim.domain.content.repository.BannerRepository;
 import com.seoulaim.domain.content.repository.BirthdayCafeRepository;
 import com.seoulaim.domain.content.repository.CalendarEntryRepository;
+import com.seoulaim.domain.content.service.AdminBannerService;
 import com.seoulaim.domain.file.entity.File;
 import com.seoulaim.domain.file.entity.FileDomain;
 import com.seoulaim.domain.file.repository.FileRepository;
@@ -55,6 +56,7 @@ class ContentSchemaIntegrationTest {
   @Autowired private ArtistGroupRepository artistGroupRepository;
   @Autowired private ArtistRepository artistRepository;
   @Autowired private FileRepository fileRepository;
+  @Autowired private AdminBannerService adminBannerService;
   @Autowired private JdbcTemplate jdbcTemplate;
   @Autowired private TransactionTemplate transactionTemplate;
 
@@ -85,6 +87,49 @@ class ContentSchemaIntegrationTest {
                     """,
                     UUID.randomUUID()))
         .isInstanceOf(DataIntegrityViolationException.class);
+  }
+
+  @Test
+  @DisplayName("기본 배너 전환이 위치별 unique index·CHECK 제약을 어기지 않고 반영되고, 해제된 배너는 삭제할 수 있다")
+  void changeDefault_제약충족_해제후삭제() {
+    Banner original =
+        bannerRepository
+            .findAllByPlacementOrderByDisplayOrderAscIdAsc(BannerPlacement.HOME)
+            .stream()
+            .filter(Banner::isDefault)
+            .findFirst()
+            .orElseThrow();
+    Banner candidate =
+        bannerRepository.saveAndFlush(
+            Banner.create(
+                BannerPlacement.HOME,
+                "새 기본 후보",
+                null,
+                Map.of("en", "Next"),
+                null,
+                null,
+                BannerTargetType.DIARY,
+                null,
+                TODAY,
+                TODAY.plusDays(1),
+                50));
+    try {
+      adminBannerService.changeDefault(candidate.getId());
+
+      Banner promoted = bannerRepository.findById(candidate.getId()).orElseThrow();
+      assertThat(promoted.isDefault()).isTrue();
+      assertThat(promoted.getStartDate()).isNull();
+      assertThat(promoted.getEndDate()).isNull();
+      Banner released = bannerRepository.findById(original.getId()).orElseThrow();
+      assertThat(released.isDefault()).isFalse();
+      assertThat(released.isEnabled()).isTrue();
+    } finally {
+      // 마이그레이션 기본 배너를 다른 테스트를 위해 되돌린다
+      adminBannerService.changeDefault(original.getId());
+    }
+    adminBannerService.deleteBanner(candidate.getId());
+    assertThat(bannerRepository.findById(candidate.getId())).isEmpty();
+    assertThat(bannerRepository.findById(original.getId()).orElseThrow().isDefault()).isTrue();
   }
 
   @Test
