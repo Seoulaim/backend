@@ -111,6 +111,19 @@ public class Diary extends BaseEntity {
     this.paid = true;
   }
 
+  /** 환불한 첫(무료) 다이어리: 결제만 되돌린다. 꾸민 내용은 남기고 앱이 무료 범위(2쪽)까지만 연다. */
+  public void revokePaid() {
+    this.paid = false;
+  }
+
+  /** 관리 화면용 쪽 수. 완성 후에는 spreads 를 비우므로 완성 페이지 수로 센다. */
+  public int pageCount() {
+    if (spreads != null && !spreads.isEmpty()) {
+      return spreads.size();
+    }
+    return pageKeys == null ? 0 : pageKeys.size();
+  }
+
   public boolean isFinalized() {
     return status == DiaryStatus.FINALIZED;
   }

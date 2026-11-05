@@ -11,6 +11,8 @@ import com.seoulaim.domain.user.repository.UserRepository;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
 import java.time.Clock;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -55,6 +57,16 @@ public class UserService {
 
   public UserResponse getUserProfile(UUID userId) {
     return UserResponse.from(getUser(userId));
+  }
+
+  /** 여러 회원 프로필 (어드민 문의 작성자 표시용). 탈퇴 회원도 포함하며 email 이 null 이다. 없는 id 는 빠진다. */
+  public List<UserResponse> findProfiles(Collection<UUID> userIds) {
+    if (userIds.isEmpty()) {
+      return List.of();
+    }
+    return userRepository.findAllById(new HashSet<>(userIds)).stream()
+        .map(UserResponse::from)
+        .toList();
   }
 
   @Transactional

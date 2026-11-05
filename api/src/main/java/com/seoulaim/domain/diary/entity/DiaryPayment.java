@@ -56,6 +56,13 @@ public class DiaryPayment extends BaseEntity {
   @Column(name = "edited_at")
   private Instant editedAt;
 
+  @Column(name = "refunded_at")
+  private Instant refundedAt;
+
+  // 토스 결제 취소 거래 키 (cancels[].transactionKey)
+  @Column(name = "toss_cancel_key", length = 200)
+  private String tossCancelKey;
+
   @Column(name = "failure_code", length = FAILURE_CODE_MAX_LENGTH)
   private String failureCode;
 
@@ -87,6 +94,13 @@ public class DiaryPayment extends BaseEntity {
     this.failureMessage = truncate(message, FAILURE_MESSAGE_MAX_LENGTH);
   }
 
+  /** 토스 결제 취소 성공. cancelKey 는 응답에 없으면 null. */
+  public void markRefunded(String tossCancelKey, Instant refundedAt) {
+    this.status = DiaryPaymentStatus.REFUNDED;
+    this.tossCancelKey = tossCancelKey;
+    this.refundedAt = refundedAt;
+  }
+
   /** 같은 다이어리에 새 결제를 만들면 기존 PENDING 결제는 실패 처리한다. */
   public void supersede() {
     markFailed(null, SUPERSEDED_CODE, "새 결제 요청으로 대체됨");
@@ -113,6 +127,11 @@ public class DiaryPayment extends BaseEntity {
         && paidAt != null
         && !now.isAfter(paidAt.plus(REFUND_PERIOD))
         && !diaryFinalized;
+  }
+
+  /** 환불 정책(제3조 1항·제4조) 안인지: 환불 가능하고 결제 후 편집 이력이 없다. 환불 문의 접수 시점의 판정으로도 쓴다. */
+  public boolean isWithinRefundPolicy(Instant now, boolean diaryFinalized) {
+    return isRefundable(now, diaryFinalized) && editedAt == null;
   }
 
   private static String truncate(String value, int maxLength) {

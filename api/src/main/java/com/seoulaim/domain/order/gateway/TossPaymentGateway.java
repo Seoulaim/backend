@@ -15,6 +15,7 @@ import java.time.format.DateTimeParseException;
 import java.util.Base64;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
@@ -23,33 +24,52 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
-/** 토스페이먼츠 결제 승인 API 구현. https://docs.tosspayments.com/reference#결제-승인 */
+/**
+ * 토스페이먼츠 결제 승인·취소 API 구현.
+ *
+ * <ul>
+ *   <li>승인: https://docs.tosspayments.com/reference#결제-승인
+ *   <li>취소: https://docs.tosspayments.com/reference#결제-취소
+ * </ul>
+ */
 @Slf4j
 @Component
 public class TossPaymentGateway implements PaymentGateway {
 
   static final String BASE_URL = "https://api.tosspayments.com";
   static final String CONFIRM_PATH = "/v1/payments/confirm";
+  static final String CANCEL_PATH = "/v1/payments/{paymentKey}/cancel";
+  static final String GATEWAY_ERROR_CODE = "GATEWAY_ERROR";
   private static final String UNKNOWN_CODE = "UNKNOWN";
 
   private final RestClient restClient;
   private final ObjectMapper objectMapper;
 
+  @Autowired
   public TossPaymentGateway(
       RestClient.Builder restClientBuilder,
       TossPaymentProperties properties,
       ObjectMapper objectMapper) {
+    this(buildRestClient(restClientBuilder, properties), objectMapper);
+  }
+
+  // 테스트에서 MockRestServiceServer 에 묶인 RestClient 를 넣는다
+  TossPaymentGateway(RestClient restClient, ObjectMapper objectMapper) {
+    this.restClient = restClient;
+    this.objectMapper = objectMapper;
+  }
+
+  private static RestClient buildRestClient(
+      RestClient.Builder restClientBuilder, TossPaymentProperties properties) {
     SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
     requestFactory.setConnectTimeout(Duration.ofSeconds(5));
-    // 토스 승인 API 는 카드사 응답을 기다리므로 읽기 타임아웃을 넉넉히 둔다
+    // 토스 승인·취소 API 는 카드사 응답을 기다리므로 읽기 타임아웃을 넉넉히 둔다
     requestFactory.setReadTimeout(Duration.ofSeconds(30));
-    this.restClient =
-        restClientBuilder
-            .baseUrl(BASE_URL)
-            .requestFactory(requestFactory)
-            .defaultHeader(HttpHeaders.AUTHORIZATION, basicAuth(properties.secretKey()))
-            .build();
-    this.objectMapper = objectMapper;
+    return restClientBuilder
+        .baseUrl(BASE_URL)
+        .requestFactory(requestFactory)
+        .defaultHeader(HttpHeaders.AUTHORIZATION, basicAuth(properties.secretKey()))
+        .build();
   }
 
   @Override
@@ -69,6 +89,59 @@ public class TossPaymentGateway implements PaymentGateway {
       log.error("토스 결제 승인 통신 실패 orderId={}", orderId, exception);
       throw new BusinessException(ErrorCode.PAYMENT_GATEWAY_ERROR);
     }
+  }
+
+  @Override
+  public PaymentCancelResult cancel(String paymentKey, String cancelReason) {
+    try {
+      return restClient
+          .post()
+          .uri(CANCEL_PATH, paymentKey)
+          .contentType(MediaType.APPLICATION_JSON)
+          .body(Map.of("cancelReason", cancelReason))
+          .exchange(
+              (request, response) -> {
+                String body = new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8);
+                return toCancelResult(response.getStatusCode(), body);
+              });
+    } catch (RestClientException exception) {
+      log.error("토스 결제 취소 통신 실패 paymentKey={}", paymentKey, exception);
+      throw refundGatewayError();
+    }
+  }
+
+  private PaymentCancelResult toCancelResult(HttpStatusCode status, String body) {
+    if (status.is2xxSuccessful()) {
+      JsonNode json = readJson(body);
+      if (json == null) {
+        log.error("토스 결제 취소 응답 파싱 실패 status={}", status);
+        throw refundGatewayError();
+      }
+      // 이번 취소는 cancels 배열의 마지막 항목
+      JsonNode cancels = json.path("cancels");
+      JsonNode latest =
+          cancels.isArray() && !cancels.isEmpty() ? cancels.get(cancels.size() - 1) : null;
+      return PaymentCancelResult.success(
+          latest == null ? null : latest.path("transactionKey").asText(null),
+          latest == null ? null : parseInstant(latest.path("canceledAt").asText(null)),
+          body);
+    }
+    if (status.is4xxClientError()) {
+      JsonNode json = readJson(body);
+      if (json == null) {
+        return PaymentCancelResult.failure(UNKNOWN_CODE, null, null);
+      }
+      return PaymentCancelResult.failure(
+          json.path("code").asText(UNKNOWN_CODE), json.path("message").asText(null), body);
+    }
+    log.error("토스 결제 취소 서버 오류 status={} body={}", status, body);
+    throw refundGatewayError();
+  }
+
+  private static BusinessException refundGatewayError() {
+    return new BusinessException(
+        ErrorCode.PAYMENT_REFUND_FAILED,
+        Map.of("code", GATEWAY_ERROR_CODE, "message", "토스페이먼츠와 통신하지 못했습니다"));
   }
 
   private PaymentResult toResult(HttpStatusCode status, String body) throws IOException {

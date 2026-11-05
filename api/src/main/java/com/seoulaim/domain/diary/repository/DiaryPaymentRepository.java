@@ -16,6 +16,12 @@ public interface DiaryPaymentRepository extends JpaRepository<DiaryPayment, UUID
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   Optional<DiaryPayment> findWithLockByIdAndUserId(UUID id, UUID userId);
 
+  // 환불(결제 취소)이 게이트웨이를 두 번 호출하지 않도록 결제 행을 잠근다
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  Optional<DiaryPayment> findWithLockById(UUID id);
+
+  Optional<DiaryPayment> findByIdAndUserId(UUID id, UUID userId);
+
   List<DiaryPayment> findAllByDiaryIdAndStatus(UUID diaryId, DiaryPaymentStatus status);
 
   Optional<DiaryPayment> findFirstByDiaryIdAndStatusOrderByPaidAtDescIdDesc(

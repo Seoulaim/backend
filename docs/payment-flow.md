@@ -210,7 +210,8 @@ iOS                                API 서버                          토스
     "status": "PAID",
     "paidAt": "2026-11-03T03:05:00Z",
     "refundable": true,
-    "withinPolicy": false
+    "withinPolicy": false,
+    "refundRequested": false
   }
 ]
 ```
@@ -218,7 +219,10 @@ iOS                                API 서버                          토스
 | 필드 | 의미 |
 |---|---|
 | `name`, `thumbnailKey` | 다이어리가 삭제됐으면 `null` |
-| `refundable` | `PAID` 이고 결제 후 7일 이내이며 다이어리가 아직 완성(FINALIZED) 전 |
+| `refundable` | `PAID` 이고 결제 후 7일 이내이며 다이어리가 아직 완성(FINALIZED) 전이고, 처리 대기 중인 환불 요청이 없음 |
 | `withinPolicy` | `refundable` 이고 결제 후 편집 이력(`POST /diaries/{id}/edited`)이 없음 |
+| `refundRequested` | 처리 대기(REQUESTED) 중인 환불 문의가 있음 |
 
-환불 API 는 아직 없다 (`REFUNDED` 는 운영에서 수동 처리용).
+## 6. 환불
+
+환불은 Help Center 의 환불 문의(`POST /inquiries`, `category: "refund"`, `paymentId`)로만 신청하고, 어드민이 승인하면 서버가 토스 결제를 취소한다. 흐름·API 는 [inquiry-flow.md](inquiry-flow.md) 참고.
