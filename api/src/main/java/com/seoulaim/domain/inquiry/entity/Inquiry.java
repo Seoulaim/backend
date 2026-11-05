@@ -126,6 +126,15 @@ public class Inquiry extends BaseEntity {
     return inquiry;
   }
 
+  /** 답변 메일을 보냈거나 환불을 결정했다. */
+  public void markAnswered() {
+    this.status = InquiryStatus.ANSWERED;
+  }
+
+  public void updateMemo(String memo) {
+    this.memo = memo;
+  }
+
   public boolean isRefund() {
     return category == InquiryCategory.REFUND;
   }
