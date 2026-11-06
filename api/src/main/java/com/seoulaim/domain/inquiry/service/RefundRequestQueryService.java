@@ -2,6 +2,7 @@ package com.seoulaim.domain.inquiry.service;
 
 import com.seoulaim.domain.inquiry.dto.PaymentRefundRequest;
 import com.seoulaim.domain.inquiry.dto.UserInquiryStats;
+import com.seoulaim.domain.inquiry.dto.UserInquirySummary;
 import com.seoulaim.domain.inquiry.entity.Inquiry;
 import com.seoulaim.domain.inquiry.entity.InquiryCategory;
 import com.seoulaim.domain.inquiry.entity.InquiryStatus;
@@ -56,6 +57,13 @@ public class RefundRequestQueryService {
           new PaymentRefundRequest(inquiry.getId(), inquiry.getRefundStatus().apiValue()));
     }
     return latest;
+  }
+
+  /** 어드민 회원 상세: 회원의 모든 문의(환불 포함) 최신순. */
+  public List<UserInquirySummary> findInquiriesOfUser(UUID userId) {
+    return inquiryRepository.findAllByUserIdOrderByCreatedAtDescIdDesc(userId).stream()
+        .map(UserInquirySummary::from)
+        .toList();
   }
 
   /** 회원별 승인·거절 환불 수, 답변 전 문의 수. 문의가 없는 회원은 {@link UserInquiryStats#EMPTY}. */

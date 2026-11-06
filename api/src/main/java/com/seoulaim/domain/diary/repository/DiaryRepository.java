@@ -28,6 +28,8 @@ public interface DiaryRepository extends JpaRepository<Diary, UUID> {
 
   List<Diary> findAllByUserIdAndDeletedAtIsNull(UUID userId);
 
+  List<Diary> findAllByUserIdOrderByCreatedAtDescIdDesc(UUID userId);
+
   List<Diary> findTop200ByDeletedAtIsNullOrderByCreatedAtDescIdDesc();
 
   @Query(

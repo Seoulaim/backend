@@ -208,6 +208,23 @@ POST /api/v1/files/presigned-upload
 - **멱등**: 이미 등록된 다이어리는 요청 바디와 무관하게 기존 `pageKeys` 를 그대로 돌려준다
 - 409 `DIARY_NOT_FINISHED`: finalize 전. 400 `COMMON_INVALID_REQUEST`: 없거나 내가 올리지 않은 fileId (`fields.fileIds`)
 
+### 다운로드 기록
+
+완성본을 PDF·JPG 로 만들어 저장(다운로드)할 때마다 호출한다. 파일은 웹앱이 만들고 서버는 기록만 한다 (환불 정책 제4조 판단, 어드민 환불 심사의 `notDownloaded`).
+
+`POST /api/v1/diaries/{id}/downloads`
+
+```json
+{ "format": "PDF", "pageCount": 12 }
+```
+
+→ 204
+
+- `format`: `PDF` | `JPG` (대소문자 무시). 다른 값·누락 → 400 `COMMON_INVALID_REQUEST`
+- `pageCount`: 1~1000
+- 409 `DIARY_NOT_FINISHED`: finalize 전. 404 `DIARY_NOT_FOUND`: 없음·남의 것·삭제됨
+- 저장(`PUT spreads`·`finalize`)할 때마다 서버는 저장 횟수·마지막 저장 시각·`placePhotos` 항목 수도 기록한다 (응답 변화 없음)
+
 ## 5. 결제
 
 유료 다이어리 결제와 무료 다이어리의 추가 spread 결제는 `docs/payment-flow.md` 의 "다이어리 결제" 를 따른다. 결제가 끝나면 다이어리는 `paid=true` 가 되어 spread 수 제한 없이 저장할 수 있다.

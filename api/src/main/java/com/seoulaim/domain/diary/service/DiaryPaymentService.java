@@ -9,6 +9,7 @@ import com.seoulaim.domain.diary.dto.MyPaymentResponse;
 import com.seoulaim.domain.diary.dto.PaymentRefundInfo;
 import com.seoulaim.domain.diary.dto.RefundRequestCheck;
 import com.seoulaim.domain.diary.dto.UserDiaryStats;
+import com.seoulaim.domain.diary.dto.UserPaymentInfo;
 import com.seoulaim.domain.diary.entity.Diary;
 import com.seoulaim.domain.diary.entity.DiaryDownload;
 import com.seoulaim.domain.diary.entity.DiaryPayment;
@@ -218,6 +219,15 @@ public class DiaryPaymentService {
       return List.of();
     }
     return toRefundInfos(diaryPaymentRepository.findAllById(paymentIds));
+  }
+
+  /** 어드민 회원 상세: 회원의 PAID·REFUNDED 결제 최신순. */
+  public List<UserPaymentInfo> findPaymentsOfUserForAdmin(UUID userId) {
+    return diaryPaymentRepository
+        .findAllByUserIdAndStatusInOrderByPaidAtDescIdDesc(userId, HISTORY_STATUSES)
+        .stream()
+        .map(UserPaymentInfo::from)
+        .toList();
   }
 
   /** 회원별 다이어리 수·PAID 결제 수. 없는 회원은 {@link UserDiaryStats#EMPTY}. */

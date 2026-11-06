@@ -1,9 +1,12 @@
 package com.seoulaim.domain.user.repository;
 
 import com.seoulaim.domain.user.entity.User;
+import com.seoulaim.domain.user.entity.UserStatus;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
@@ -21,4 +24,16 @@ public interface UserRepository extends JpaRepository<User, UUID> {
       where lower(u.email) like :pattern escape '\\' or lower(u.nickname) like :pattern escape '\\'
       """)
   List<UUID> findIdsByEmailOrNicknameLike(String pattern);
+
+  /** 어드민 회원 목록: 상태·검색어(이메일·닉네임 부분 일치)는 null 이면 조건 없음. 가입 최신순. */
+  @Query(
+      """
+      select u from User u
+      where (:status is null or u.status = :status)
+        and (:pattern is null
+          or lower(u.email) like :pattern escape '\\'
+          or lower(u.nickname) like :pattern escape '\\')
+      order by u.createdAt desc, u.id desc
+      """)
+  Page<User> searchForAdmin(UserStatus status, String pattern, Pageable pageable);
 }

@@ -6,6 +6,9 @@ import com.seoulaim.domain.diary.service.DiaryService;
 import com.seoulaim.domain.place.service.PlaceFavoriteService;
 import com.seoulaim.domain.plan.service.PlanService;
 import com.seoulaim.domain.survey.service.SurveyService;
+import com.seoulaim.domain.user.entity.WithdrawnBy;
+import com.seoulaim.global.exception.BusinessException;
+import com.seoulaim.global.exception.ErrorCode;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -20,7 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>설문 응답은 남기고 email 만 "withdrawn" 으로 익명화 (응답 통계 유지)
  *   <li>users row 는 남기고 이메일·비밀번호만 지움 → 같은 이메일로 재가입 가능, 로그인은 AUTH_INVALID_CREDENTIALS
  *   <li>refresh token 은 DB 처리 후 마지막에 폐기 (Redis 실패 시 DB 롤백)
- *   <li>이미 탈퇴한 회원이면 아무것도 하지 않음 (멱등)
+ *   <li>이미 탈퇴한 회원이면 아무것도 하지 않음 (멱등). 어드민 강퇴는 USER_ALREADY_WITHDRAWN(409)
+ *   <li>탈퇴 주체(SELF / ADMIN)와 강퇴 사유를 users 에 남긴다
  * </ul>
  */
 @Service
@@ -40,13 +44,26 @@ public class UserWithdrawalService {
     if (userService.getUser(userId).isWithdrawn()) {
       return;
     }
+    withdrawWithCleanup(userId, WithdrawnBy.SELF, null);
+  }
+
+  /** 어드민 강퇴. 본인 탈퇴와 같은 정리를 하고 사유를 남긴다. 없으면 USER_NOT_FOUND, 이미 탈퇴면 USER_ALREADY_WITHDRAWN. */
+  @Transactional
+  public void withdrawByAdmin(UUID userId, String reason) {
+    if (userService.getUser(userId).isWithdrawn()) {
+      throw new BusinessException(ErrorCode.USER_ALREADY_WITHDRAWN);
+    }
+    withdrawWithCleanup(userId, WithdrawnBy.ADMIN, reason);
+  }
+
+  private void withdrawWithCleanup(UUID userId, WithdrawnBy withdrawnBy, String reason) {
     // bias·즐겨찾기 벌크 delete 가 영속성 컨텍스트를 비움 → 가장 먼저 실행
     userBiasService.deleteAllBiasesOfUser(userId);
     placeFavoriteService.deleteAllFavoritesOfUser(userId);
     planService.deleteAllPlansOfUser(userId);
     diaryService.deleteAllDiariesOfUser(userId);
     surveyService.anonymizeResponseOfUser(userId);
-    userService.withdraw(userId);
+    userService.withdraw(userId, withdrawnBy, reason);
     authService.revokeAllRefreshTokens(userId);
   }
 }

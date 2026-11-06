@@ -61,6 +61,15 @@ public class User extends BaseEntity {
   @Column(name = "withdrawn_at")
   private Instant withdrawnAt;
 
+  // 탈퇴 주체. #57 이전 탈퇴는 마이그레이션에서 SELF 로 채움
+  @Enumerated(EnumType.STRING)
+  @Column(name = "withdrawn_by", length = 10)
+  private WithdrawnBy withdrawnBy;
+
+  // 어드민 강퇴 사유. 본인 탈퇴는 null
+  @Column(name = "withdraw_reason", length = 200)
+  private String withdrawReason;
+
   // 이메일 OTP 인증 완료 여부는 호출 전 서비스에서 확인
   public static User createWithEmail(String email, String passwordHash, String nickname) {
     User user = new User();
@@ -80,10 +89,17 @@ public class User extends BaseEntity {
 
   // 로그인 정보·이메일 삭제 → 같은 이메일로 재가입 가능, 개인정보 미보관
   public void withdraw(Instant withdrawnAt) {
+    withdraw(withdrawnAt, WithdrawnBy.SELF, null);
+  }
+
+  // reason 은 어드민 강퇴 사유 (본인 탈퇴는 null)
+  public void withdraw(Instant withdrawnAt, WithdrawnBy withdrawnBy, String reason) {
     this.email = null;
     this.passwordHash = null;
     this.status = UserStatus.WITHDRAWN;
     this.withdrawnAt = withdrawnAt;
+    this.withdrawnBy = withdrawnBy;
+    this.withdrawReason = reason;
   }
 
   public void changeNickname(String nickname) {

@@ -13,6 +13,7 @@ import com.seoulaim.domain.diary.dto.DiaryFinishedPagesResponse;
 import com.seoulaim.domain.diary.dto.DiaryNewTermsResponse;
 import com.seoulaim.domain.diary.dto.DiarySpreadsRequest;
 import com.seoulaim.domain.diary.dto.DiarySummaryResponse;
+import com.seoulaim.domain.diary.dto.UserDiaryInfo;
 import com.seoulaim.domain.diary.entity.Diary;
 import com.seoulaim.domain.diary.entity.DiaryDownload;
 import com.seoulaim.domain.diary.repository.DiaryDownloadRepository;
@@ -163,6 +164,23 @@ public class DiaryService {
   public List<AdminDiarySummaryResponse> getAdminDiaries() {
     return diaryRepository.findTop200ByDeletedAtIsNullOrderByCreatedAtDescIdDesc().stream()
         .map(AdminDiarySummaryResponse::from)
+        .toList();
+  }
+
+  /** 어드민 회원 상세: 회원의 모든 다이어리(삭제·미결제 포함) 최신순과 다운로드 횟수. */
+  public List<UserDiaryInfo> findDiariesOfUserForAdmin(UUID userId) {
+    List<Diary> diaries = diaryRepository.findAllByUserIdOrderByCreatedAtDescIdDesc(userId);
+    if (diaries.isEmpty()) {
+      return List.of();
+    }
+    Map<UUID, Long> downloadCounts =
+        diaryDownloadRepository
+            .findAllByDiaryIdInOrderByCreatedAtDescIdDesc(
+                diaries.stream().map(Diary::getId).toList())
+            .stream()
+            .collect(Collectors.groupingBy(DiaryDownload::getDiaryId, Collectors.counting()));
+    return diaries.stream()
+        .map(diary -> UserDiaryInfo.of(diary, downloadCounts.getOrDefault(diary.getId(), 0L)))
         .toList();
   }
 

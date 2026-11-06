@@ -28,6 +28,8 @@ public interface InquiryRepository extends JpaRepository<Inquiry, UUID> {
 
   long countByRefundStatus(RefundStatus refundStatus);
 
+  List<Inquiry> findAllByUserIdOrderByCreatedAtDescIdDesc(UUID userId);
+
   List<Inquiry> findAllByPaymentIdInAndCategoryOrderByCreatedAtDescIdDesc(
       Collection<UUID> paymentIds, InquiryCategory category);
 

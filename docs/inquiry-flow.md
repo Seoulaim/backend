@@ -120,7 +120,19 @@ Help Center(MR03)에서 회원이 남긴 문의를 어드민이 이메일로 답
 [
   {
     "id": "019a5a30-...",
-    "author": { "id": "019a...", "nickname": "Jin", "email": "jin@example.com" },
+    "author": {
+      "id": "019a...",
+      "nickname": "Jin",
+      "email": "jin@example.com",
+      "joinedAt": "2026-10-20T08:00:00Z",
+      "language": "en",
+      "diaryCount": 2,
+      "paidPaymentCount": 1,
+      "refundedCount": 0,
+      "rejectedRefundCount": 0,
+      "pendingInquiryCount": 1,
+      "withdrawn": false
+    },
     "language": "en",
     "title": "Refund for my second diary",
     "content": "I made a second diary by mistake.",
@@ -141,10 +153,31 @@ Help Center(MR03)에서 회원이 남긴 문의를 어드민이 이메일로 답
       "paidAt": "2026-11-04T03:00:00Z",
       "refundConsentAt": "2026-11-04T02:59:30Z",
       "editedAt": null,
-      "diary": { "id": "019a4c10-...", "name": "My Diary", "first": false, "pages": 4, "completedAt": null }
+      "diary": {
+        "id": "019a4c10-...",
+        "name": "My Diary",
+        "first": false,
+        "pages": 4,
+        "completedAt": null,
+        "createdAt": "2026-11-04T02:50:00Z",
+        "saveCount": 3,
+        "lastSavedAt": "2026-11-04T02:58:00Z",
+        "photoCount": 5,
+        "pageKeys": [],
+        "thumbnailKey": null,
+        "downloads": [],
+        "deleted": false
+      }
     },
     "refundWithinPolicy": true,
-    "deadline": "2026-11-10"
+    "deadline": "2026-11-10",
+    "policy": {
+      "within7Days": { "ok": true, "paidAt": "2026-11-04T03:00:00Z", "deadlineAt": "2026-11-11T03:00:00Z" },
+      "notEdited": { "ok": true, "editedAt": null },
+      "notFinalized": { "ok": true, "finalizedAt": null },
+      "notDownloaded": { "ok": true, "downloadCount": 0, "lastDownloadedAt": null },
+      "allOk": true
+    }
   }
 ]
 ```
@@ -159,8 +192,38 @@ Help Center(MR03)에서 회원이 남긴 문의를 어드민이 이메일로 답
 | `payment.diary.pages` | 편집 중이면 spreads 수, 완성 후에는 완성 페이지 수 |
 | `refundWithinPolicy` | **신청 시점** 서버 판정. 이후 편집·경과일과 무관하게 이 값으로 승인 조건을 본다 |
 | `deadline` | 처리 기한 = 신청일(KST) + 영업일 3일 (환불 정책 제6조). 주말만 건너뛰고 공휴일은 반영하지 않는다 |
+| `policy` | **지금 시점** 정책 항목별 판정 (아래 "정책 판정"). 결제를 못 찾으면 `null` |
+| `payment.diary.saveCount` / `lastSavedAt` | 편집 데이터 저장(`PUT spreads`·`finalize`) 횟수와 마지막 저장 시각 |
+| `payment.diary.photoCount` | 마지막 저장 시점 `placePhotos` 전체 항목 수 (같은 사진이 여러 장소에 있으면 각각) |
+| `payment.diary.pageKeys` / `thumbnailKey` | 완성 페이지 key (없으면 `[]`) / 첫 장 (없으면 `null`) |
+| `payment.diary.downloads` | `[{ format: "PDF"|"JPG", pageCount, at }]` 최신순 |
+| `payment.diary.deleted` | soft delete 됨 (환불·회원 삭제·탈퇴) |
+| `author.language` | 회원의 **현재** 앱 언어. 상위 `language` 는 문의를 쓸 때 언어 |
+| `author.diaryCount` | 삭제되지 않았고 무료이거나 결제된 다이어리 수 (회원 앱 목록에 보이는 수) |
+| `author.paidPaymentCount` | 지금 PAID 인 결제 수 (환불된 결제 제외) |
+| `author.refundedCount` / `rejectedRefundCount` | 승인 / 거절된 환불 요청 수 |
+| `author.pendingInquiryCount` | 답변 전(received) 문의 수. 처리 대기 환불 요청 포함 |
+| `author.withdrawn` | 탈퇴 회원 (이때 `email` 은 `null`) |
 
-`GET /admin/refund-requests/{id}` 는 같은 항목 1건. 환불 문의가 아니면 `404 INQUIRY_NOT_FOUND`.
+`GET /admin/refund-requests/{id}` 는 같은 항목 1건. 환불 문의가 아니면 `404 INQUIRY_NOT_FOUND`. 승인·거절 응답도 같은 형태다.
+
+### 정책 판정
+
+환불 정책(회원 앱 `refund.ko.md`) 항목을 서버가 **조회하는 지금 시점**으로 판정해 `policy` 로 내려준다. 어드민 화면의 "환불 정책 확인" 체크 항목을 이 값으로 그리면 된다.
+
+| 항목 | ok 조건 | 근거 |
+|---|---|---|
+| `within7Days` | `now ≤ paidAt + 7일` (`deadlineAt`). 결제 전이면 false | 제3조 1·5항 |
+| `notEdited` | 결제 후 편집 기록(`editedAt`)이 없음. 첫 다이어리의 1~2쪽 편집은 앱이 `/edited` 를 부르지 않으므로 기록되지 않는다 | 제3조 1·2항 |
+| `notFinalized` | 다이어리가 완성(Done)되지 않음. `finalizedAt` = 완성 시각 | 제4조 |
+| `notDownloaded` | 완성본 다운로드 기록(`POST /diaries/{id}/downloads`)이 없음 | 제4조 |
+| `allOk` | 네 항목 모두 ok | |
+
+- 7일은 KST 날짜가 아니라 결제 시각 + 7×24시간 (기존 `refundWithinPolicy`·`/me/payments` 의 `refundable` 과 같은 기준)
+- 다운로드는 완성 후에만 기록되므로 `notFinalized` 가 ok 면 `notDownloaded` 도 대개 ok 다. 둘 다 내려주는 건 어드민이 "완성했지만 아직 안 내려받음"을 보게 하려는 것
+- 다이어리를 찾을 수 없으면 `notFinalized`·`notDownloaded` 는 ok 로 본다
+
+**`refundWithinPolicy` 와의 관계**: `refundWithinPolicy` 는 환불을 **신청한 시점**의 판정(7일 이내 && 미편집 && 미완성)이고 승인 조건(정책 밖이면 `exception` 필수)은 이 값으로 본다. `policy.allOk` 는 같은 기준을 **지금** 다시 본 것이라, 신청 후 편집·완성·다운로드했거나 7일이 지났으면 둘이 다를 수 있다 (예: 신청 시 `true` → 처리 전에 다운로드 → `allOk: false`). 둘이 다르면 어드민이 사정을 확인하도록 둘 다 내려준다. 이미 환불된 결제도 `policy` 는 항목대로 계산한다.
 
 ### 승인
 
