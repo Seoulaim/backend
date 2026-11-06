@@ -98,6 +98,7 @@ public enum ErrorCode {
   PAYMENT_CONSENT_REQUIRED(
       HttpStatus.BAD_REQUEST, "PAYMENT_CONSENT_REQUIRED", "환불 규정에 동의해야 결제할 수 있습니다"),
   PAYMENT_REFUND_FAILED(HttpStatus.BAD_GATEWAY, "PAYMENT_REFUND_FAILED", "결제 취소(환불)에 실패했습니다"),
+  PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "PAYMENT_NOT_FOUND", "결제를 찾을 수 없습니다"),
 
   // DIARY
   DIARY_NOT_FOUND(HttpStatus.NOT_FOUND, "DIARY_NOT_FOUND", "다이어리를 찾을 수 없습니다"),

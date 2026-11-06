@@ -11,6 +11,7 @@ import com.seoulaim.domain.user.entity.User;
 import com.seoulaim.domain.user.repository.UserRepository;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
+import com.seoulaim.global.util.LikePattern;
 import java.time.Clock;
 import java.util.Collection;
 import java.util.HashSet;
@@ -78,6 +79,11 @@ public class UserService {
     return userRepository.findAllById(new HashSet<>(userIds)).stream()
         .map(UserAccountInfo::from)
         .toList();
+  }
+
+  /** 이메일·닉네임 부분 일치(대소문자 무시) 회원 id (어드민 검색용). 탈퇴 회원은 이메일이 없어 닉네임으로만 걸린다. */
+  public List<UUID> searchUserIds(String keyword) {
+    return userRepository.findIdsByEmailOrNicknameLike(LikePattern.containing(keyword));
   }
 
   @Transactional

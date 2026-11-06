@@ -1,6 +1,9 @@
 package com.seoulaim.domain.inquiry.service;
 
+import com.seoulaim.domain.inquiry.dto.PaymentRefundRequest;
 import com.seoulaim.domain.inquiry.dto.UserInquiryStats;
+import com.seoulaim.domain.inquiry.entity.Inquiry;
+import com.seoulaim.domain.inquiry.entity.InquiryCategory;
 import com.seoulaim.domain.inquiry.entity.InquiryStatus;
 import com.seoulaim.domain.inquiry.entity.RefundStatus;
 import com.seoulaim.domain.inquiry.repository.InquiryRepository;
@@ -37,6 +40,22 @@ public class RefundRequestQueryService {
     }
     return new HashSet<>(
         inquiryRepository.findPaymentIdsByRefundStatus(paymentIds, RefundStatus.REQUESTED));
+  }
+
+  /** 결제별 가장 최근 환불 요청 (어드민 결제 관리). 환불 요청이 없는 결제는 빠진다. */
+  public Map<UUID, PaymentRefundRequest> findLatestRefundRequests(Collection<UUID> paymentIds) {
+    if (paymentIds.isEmpty()) {
+      return Map.of();
+    }
+    Map<UUID, PaymentRefundRequest> latest = new HashMap<>();
+    for (Inquiry inquiry :
+        inquiryRepository.findAllByPaymentIdInAndCategoryOrderByCreatedAtDescIdDesc(
+            paymentIds, InquiryCategory.REFUND)) {
+      latest.putIfAbsent(
+          inquiry.getPaymentId(),
+          new PaymentRefundRequest(inquiry.getId(), inquiry.getRefundStatus().apiValue()));
+    }
+    return latest;
   }
 
   /** 회원별 승인·거절 환불 수, 답변 전 문의 수. 문의가 없는 회원은 {@link UserInquiryStats#EMPTY}. */

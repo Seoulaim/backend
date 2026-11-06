@@ -25,6 +25,9 @@ public interface DiaryPaymentRepository extends JpaRepository<DiaryPayment, UUID
 
   List<DiaryPayment> findAllByDiaryIdAndStatus(UUID diaryId, DiaryPaymentStatus status);
 
+  List<DiaryPayment> findAllByDiaryIdInAndStatus(
+      Collection<UUID> diaryIds, DiaryPaymentStatus status);
+
   Optional<DiaryPayment> findFirstByDiaryIdAndStatusOrderByPaidAtDescIdDesc(
       UUID diaryId, DiaryPaymentStatus status);
 

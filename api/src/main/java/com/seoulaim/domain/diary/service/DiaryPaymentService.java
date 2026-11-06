@@ -138,7 +138,8 @@ public class DiaryPaymentService {
       case PaymentResult.Success success -> {
         payment.markPaid(
             success.paymentKey() == null ? request.paymentKey() : success.paymentKey(),
-            success.approvedAt() == null ? clock.instant() : success.approvedAt());
+            success.approvedAt() == null ? clock.instant() : success.approvedAt(),
+            success.method());
         diaryRepository
             .findById(payment.getDiaryId())
             .orElseThrow(() -> new BusinessException(ErrorCode.DIARY_NOT_FOUND))

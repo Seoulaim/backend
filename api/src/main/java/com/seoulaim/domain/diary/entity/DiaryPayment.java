@@ -26,6 +26,7 @@ public class DiaryPayment extends BaseEntity {
   static final String SUPERSEDED_CODE = "SUPERSEDED";
   private static final int FAILURE_CODE_MAX_LENGTH = 100;
   private static final int FAILURE_MESSAGE_MAX_LENGTH = 500;
+  private static final int METHOD_MAX_LENGTH = 30;
 
   @Column(name = "diary_id", nullable = false)
   private UUID diaryId;
@@ -51,6 +52,10 @@ public class DiaryPayment extends BaseEntity {
 
   @Column(name = "paid_at")
   private Instant paidAt;
+
+  // 토스 승인 응답의 결제수단 (예: 카드, 간편결제). 응답에 없거나 이전 결제면 null
+  @Column(name = "method", length = METHOD_MAX_LENGTH)
+  private String method;
 
   // 결제 후 처음 편집한 시각. 환불 정책(편집 전 전액 환불) 판단용
   @Column(name = "edited_at")
@@ -82,9 +87,17 @@ public class DiaryPayment extends BaseEntity {
   }
 
   public void markPaid(String tossPaymentKey, Instant paidAt) {
+    markPaid(tossPaymentKey, paidAt, null);
+  }
+
+  /**
+   * @param method 토스 승인 응답의 결제수단. 없으면 null
+   */
+  public void markPaid(String tossPaymentKey, Instant paidAt, String method) {
     this.status = DiaryPaymentStatus.PAID;
     this.tossPaymentKey = tossPaymentKey;
     this.paidAt = paidAt;
+    this.method = truncate(method, METHOD_MAX_LENGTH);
   }
 
   public void markFailed(String tossPaymentKey, String code, String message) {

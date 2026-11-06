@@ -173,7 +173,7 @@ class DiaryPaymentServiceTest {
   }
 
   @Test
-  @DisplayName("승인 성공 시 결제는 PAID, 다이어리는 paid=true 가 된다")
+  @DisplayName("승인 성공 시 결제는 PAID(토스 결제수단 저장), 다이어리는 paid=true 가 된다")
   void confirm_성공_paid() {
     Diary diary = Diary.create(USER_ID, false);
     DiaryPayment payment = givenLockedPayment(diary);
@@ -190,6 +190,7 @@ class DiaryPaymentServiceTest {
     assertThat(payment.getStatus()).isEqualTo(DiaryPaymentStatus.PAID);
     assertThat(payment.getPaidAt()).isEqualTo(approvedAt);
     assertThat(payment.getTossPaymentKey()).isEqualTo("pk_1");
+    assertThat(payment.getMethod()).isEqualTo("카드");
     assertThat(diary.isPaid()).isTrue();
   }
 
