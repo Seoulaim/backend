@@ -14,6 +14,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.seoulaim.domain.diary.dto.DiaryCreateResponse;
+import com.seoulaim.domain.diary.dto.DiaryDownloadRequest;
+import com.seoulaim.domain.diary.entity.DiaryDownloadFormat;
 import com.seoulaim.domain.diary.service.DiaryService;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
@@ -164,5 +166,51 @@ class DiaryControllerTest {
                 .content("{\"fileIds\": []}"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.fields.fileIds").exists());
+  }
+
+  @Test
+  @DisplayName("다운로드 기록은 204, format 은 대소문자를 무시한다")
+  void recordDownload_정상_204반환() throws Exception {
+    UUID userId = UUID.randomUUID();
+    UUID diaryId = UUID.randomUUID();
+
+    mockMvc
+        .perform(
+            post("/api/v1/diaries/{diaryId}/downloads", diaryId)
+                .header(HttpHeaders.AUTHORIZATION, tokens.bearer(userId))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"format\": \"pdf\", \"pageCount\": 4}"))
+        .andExpect(status().isNoContent());
+
+    verify(diaryService)
+        .recordDownload(
+            eq(userId), eq(diaryId), eq(new DiaryDownloadRequest(DiaryDownloadFormat.PDF, 4)));
+  }
+
+  @Test
+  @DisplayName("미완성 다이어리 다운로드 기록은 409 DIARY_NOT_FINISHED, 없는 format 은 400")
+  void recordDownload_미완성_409_형식오류_400() throws Exception {
+    UUID userId = UUID.randomUUID();
+    UUID diaryId = UUID.randomUUID();
+    willThrow(new BusinessException(ErrorCode.DIARY_NOT_FINISHED))
+        .given(diaryService)
+        .recordDownload(eq(userId), eq(diaryId), any());
+
+    mockMvc
+        .perform(
+            post("/api/v1/diaries/{diaryId}/downloads", diaryId)
+                .header(HttpHeaders.AUTHORIZATION, tokens.bearer(userId))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"format\": \"PDF\", \"pageCount\": 4}"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("DIARY_NOT_FINISHED"));
+    mockMvc
+        .perform(
+            post("/api/v1/diaries/{diaryId}/downloads", diaryId)
+                .header(HttpHeaders.AUTHORIZATION, tokens.bearer(userId))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"format\": \"PNG\", \"pageCount\": 4}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("COMMON_INVALID_REQUEST"));
   }
 }

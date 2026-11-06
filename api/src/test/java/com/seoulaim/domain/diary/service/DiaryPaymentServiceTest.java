@@ -276,7 +276,7 @@ class DiaryPaymentServiceTest {
   void getMyPayments_환불가능판단() {
     Diary editing = Diary.create(USER_ID, false);
     Diary finalized = Diary.create(USER_ID, false);
-    finalized.finalizeWith(List.of(), Map.of(), NOW);
+    finalized.finalizeWith(List.of(), Map.of(), 0, NOW);
     Diary deleted = Diary.create(USER_ID, false);
     deleted.delete(NOW);
 
@@ -378,7 +378,7 @@ class DiaryPaymentServiceTest {
   @DisplayName("환불 정책 판정: 완성(FINALIZED)한 다이어리면 정책 밖")
   void checkRefundRequest_완성후_정책밖() {
     Diary diary = Diary.create(USER_ID, false);
-    diary.finalizeWith(List.of(), Map.of(), NOW);
+    diary.finalizeWith(List.of(), Map.of(), 0, NOW);
     DiaryPayment payment = givenOwnedPayment(diary, NOW.minus(Duration.ofDays(1)));
 
     assertThat(diaryPaymentService.checkRefundRequest(USER_ID, payment.getId()))
@@ -411,7 +411,7 @@ class DiaryPaymentServiceTest {
   @DisplayName("환불: 첫(무료) 다이어리는 결제만 REFUNDED·paid=false 로 되돌리고 꾸민 내용은 남긴다")
   void refund_첫다이어리_paid만해제() {
     Diary first = Diary.create(USER_ID, true);
-    first.saveSpreads(List.of(Map.of("p", 1), Map.of("p", 2), Map.of("p", 3)), Map.of(), NOW);
+    first.saveSpreads(List.of(Map.of("p", 1), Map.of("p", 2), Map.of("p", 3)), Map.of(), 0, NOW);
     first.markPaid();
     DiaryPayment payment = givenLockedPaidPayment(first);
     given(paymentGateway.cancel("pk", CANCEL_REASON))
