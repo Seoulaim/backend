@@ -1,6 +1,7 @@
 package com.seoulaim.domain.inquiry.admin.dto;
 
 import com.seoulaim.domain.diary.dto.PaymentRefundInfo;
+import com.seoulaim.domain.diary.dto.RefundPolicyCheck;
 import com.seoulaim.domain.inquiry.entity.Inquiry;
 import com.seoulaim.domain.inquiry.entity.RefundStatus;
 import java.time.Instant;
@@ -14,10 +15,11 @@ import java.util.UUID;
  * @param createdAt 환불을 요청한 시각
  * @param refundWithinPolicy 신청 시점의 서버 판정. false 면 승인에 예외 사유가 필요하다
  * @param deadline 처리 기한: 신청일(KST) + 영업일 3일 (주말 제외, 공휴일 미반영)
+ * @param policy 지금 시점의 환불 정책 항목별 판정. refundWithinPolicy(신청 시점)와 다를 수 있다. 결제를 찾을 수 없으면 null
  */
 public record AdminRefundRequestResponse(
     UUID id,
-    InquiryAuthor author,
+    RefundAuthor author,
     String language,
     String title,
     String content,
@@ -26,7 +28,8 @@ public record AdminRefundRequestResponse(
     Refund refund,
     Payment payment,
     boolean refundWithinPolicy,
-    LocalDate deadline) {
+    LocalDate deadline,
+    RefundPolicyCheck policy) {
 
   /**
    * @param status 소문자 (requested | refunded | rejected)
@@ -58,14 +61,39 @@ public record AdminRefundRequestResponse(
 
   /**
    * @param first 회원의 첫(무료) 다이어리
+   * @param saveCount 편집 데이터 저장 횟수
+   * @param photoCount 마지막 저장 시점의 등록 사진 수
+   * @param pageKeys 완성 페이지 key. 없으면 []
+   * @param thumbnailKey 완성 페이지 첫 장. 없으면 null
+   * @param downloads 다운로드 이력 최신순
+   * @param deleted soft delete 됨 (환불·탈퇴·회원 삭제)
    */
-  public record Diary(UUID id, String name, boolean first, int pages, Instant completedAt) {}
+  public record Diary(
+      UUID id,
+      String name,
+      boolean first,
+      int pages,
+      Instant completedAt,
+      Instant createdAt,
+      int saveCount,
+      Instant lastSavedAt,
+      int photoCount,
+      List<String> pageKeys,
+      String thumbnailKey,
+      List<Download> downloads,
+      boolean deleted) {}
+
+  /**
+   * @param format PDF | JPG
+   * @param at 다운로드 시각
+   */
+  public record Download(String format, int pageCount, Instant at) {}
 
   static final String PROVIDER = "toss";
 
   public static AdminRefundRequestResponse of(
       Inquiry inquiry,
-      InquiryAuthor author,
+      RefundAuthor author,
       PaymentRefundInfo payment,
       String adminName,
       LocalDate deadline) {
@@ -91,7 +119,8 @@ public record AdminRefundRequestResponse(
         refund,
         payment == null ? null : toPayment(payment),
         inquiry.isRefundWithinPolicy(),
-        deadline);
+        deadline,
+        payment == null ? null : payment.policy());
   }
 
   private static Payment toPayment(PaymentRefundInfo payment) {
@@ -104,9 +133,27 @@ public record AdminRefundRequestResponse(
         payment.paidAt(),
         payment.refundConsentAt(),
         payment.editedAt(),
-        diary == null
-            ? null
-            : new Diary(
-                diary.id(), diary.name(), diary.first(), diary.pages(), diary.completedAt()));
+        diary == null ? null : toDiary(diary));
+  }
+
+  private static Diary toDiary(PaymentRefundInfo.DiaryInfo diary) {
+    return new Diary(
+        diary.id(),
+        diary.name(),
+        diary.first(),
+        diary.pages(),
+        diary.completedAt(),
+        diary.createdAt(),
+        diary.saveCount(),
+        diary.lastSavedAt(),
+        diary.photoCount(),
+        diary.pageKeys(),
+        diary.thumbnailKey(),
+        diary.downloads().stream()
+            .map(
+                download ->
+                    new Download(download.format().name(), download.pageCount(), download.at()))
+            .toList(),
+        diary.deleted());
   }
 }

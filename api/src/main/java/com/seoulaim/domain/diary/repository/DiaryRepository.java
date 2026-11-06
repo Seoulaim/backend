@@ -29,4 +29,12 @@ public interface DiaryRepository extends JpaRepository<Diary, UUID> {
   List<Diary> findAllByUserIdAndDeletedAtIsNull(UUID userId);
 
   List<Diary> findTop200ByDeletedAtIsNullOrderByCreatedAtDescIdDesc();
+
+  @Query(
+      """
+      select d.userId as userId, count(d) as count from Diary d
+      where d.userId in :userIds and d.deletedAt is null and (d.isFree = true or d.paid = true)
+      group by d.userId
+      """)
+  List<UserCount> countVisibleByUserIds(Collection<UUID> userIds);
 }

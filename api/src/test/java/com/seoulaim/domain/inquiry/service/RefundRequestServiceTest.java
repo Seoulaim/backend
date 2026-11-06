@@ -15,7 +15,7 @@ import com.seoulaim.domain.inquiry.admin.dto.AdminRefundApproveRequest;
 import com.seoulaim.domain.inquiry.admin.dto.AdminRefundApproveRequest.PolicyException;
 import com.seoulaim.domain.inquiry.admin.dto.AdminRefundRejectRequest;
 import com.seoulaim.domain.inquiry.admin.dto.AdminRefundRequestResponse;
-import com.seoulaim.domain.inquiry.admin.dto.InquiryAuthor;
+import com.seoulaim.domain.inquiry.admin.dto.RefundAuthor;
 import com.seoulaim.domain.inquiry.entity.Inquiry;
 import com.seoulaim.domain.inquiry.entity.InquiryCategory;
 import com.seoulaim.domain.inquiry.entity.InquiryStatus;
@@ -50,7 +50,7 @@ class RefundRequestServiceTest {
 
   @Mock private InquiryRepository inquiryRepository;
   @Mock private DiaryPaymentService diaryPaymentService;
-  @Mock private InquiryAuthorLoader inquiryAuthorLoader;
+  @Mock private RefundAuthorLoader refundAuthorLoader;
   @Mock private EmailSender emailSender;
   @Mock private ApplicationEventPublisher eventPublisher;
 
@@ -62,7 +62,7 @@ class RefundRequestServiceTest {
         new RefundRequestService(
             inquiryRepository,
             diaryPaymentService,
-            inquiryAuthorLoader,
+            refundAuthorLoader,
             emailSender,
             eventPublisher,
             Clock.fixed(NOW, ZoneOffset.UTC));
@@ -81,8 +81,8 @@ class RefundRequestServiceTest {
   }
 
   private void givenAuthor(String email) {
-    given(inquiryAuthorLoader.load(any(Inquiry.class)))
-        .willReturn(new InquiryAuthor(USER_ID, "Jin", email));
+    given(refundAuthorLoader.load(any(Inquiry.class)))
+        .willReturn(new RefundAuthor(USER_ID, "Jin", email, NOW, "en", 1, 1, 0, 0, 1, false));
   }
 
   private static PaymentRefundInfo refundedPayment(UUID paymentId, boolean firstDiary) {
@@ -96,7 +96,20 @@ class RefundRequestServiceTest {
         null,
         NOW,
         new PaymentRefundInfo.DiaryInfo(
-            UUID.randomUUID(), "My Diary", firstDiary, 3, null, !firstDiary));
+            UUID.randomUUID(),
+            "My Diary",
+            firstDiary,
+            3,
+            null,
+            !firstDiary,
+            NOW.minusSeconds(172_800),
+            2,
+            NOW.minusSeconds(100_000),
+            0,
+            List.of(),
+            null,
+            List.of()),
+        null);
   }
 
   @Test
@@ -243,7 +256,7 @@ class RefundRequestServiceTest {
     List<Inquiry> ascending = List.of(waitingOld, decidedOld, waitingNew, decidedNew);
     given(inquiryRepository.findAllByCategoryOrderByCreatedAtAscIdAsc(InquiryCategory.REFUND))
         .willReturn(ascending);
-    given(inquiryAuthorLoader.load(ascending)).willReturn(Map.of());
+    given(refundAuthorLoader.load(ascending)).willReturn(Map.of());
     given(diaryPaymentService.findRefundInfos(any())).willReturn(List.of());
 
     assertThat(refundRequestService.getRefundRequests())

@@ -5,6 +5,7 @@ import com.seoulaim.domain.file.entity.FileDomain;
 import com.seoulaim.domain.file.service.FileService;
 import com.seoulaim.domain.user.dto.NotificationSettingsResponse;
 import com.seoulaim.domain.user.dto.UpdateProfileRequest;
+import com.seoulaim.domain.user.dto.UserAccountInfo;
 import com.seoulaim.domain.user.dto.UserResponse;
 import com.seoulaim.domain.user.entity.User;
 import com.seoulaim.domain.user.repository.UserRepository;
@@ -66,6 +67,16 @@ public class UserService {
     }
     return userRepository.findAllById(new HashSet<>(userIds)).stream()
         .map(UserResponse::from)
+        .toList();
+  }
+
+  /** 여러 회원 계정 정보 (어드민 화면용). 탈퇴 회원 포함, 없는 id 는 빠진다. */
+  public List<UserAccountInfo> findAccounts(Collection<UUID> userIds) {
+    if (userIds.isEmpty()) {
+      return List.of();
+    }
+    return userRepository.findAllById(new HashSet<>(userIds)).stream()
+        .map(UserAccountInfo::from)
         .toList();
   }
 

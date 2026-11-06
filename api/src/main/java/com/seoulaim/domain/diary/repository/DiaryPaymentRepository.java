@@ -9,6 +9,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
 
 public interface DiaryPaymentRepository extends JpaRepository<DiaryPayment, UUID> {
 
@@ -29,4 +30,12 @@ public interface DiaryPaymentRepository extends JpaRepository<DiaryPayment, UUID
 
   List<DiaryPayment> findAllByUserIdAndStatusInOrderByPaidAtDescIdDesc(
       UUID userId, Collection<DiaryPaymentStatus> statuses);
+
+  @Query(
+      """
+      select p.userId as userId, count(p) as count from DiaryPayment p
+      where p.userId in :userIds and p.status = :status
+      group by p.userId
+      """)
+  List<UserCount> countByUserIdsAndStatus(Collection<UUID> userIds, DiaryPaymentStatus status);
 }

@@ -36,4 +36,14 @@ public interface InquiryRepository extends JpaRepository<Inquiry, UUID> {
       where i.paymentId in :paymentIds and i.refundStatus = :status
       """)
   List<UUID> findPaymentIdsByRefundStatus(Collection<UUID> paymentIds, RefundStatus status);
+
+  @Query(
+      """
+      select i.userId as userId, i.status as status, i.refundStatus as refundStatus,
+        count(i) as count
+      from Inquiry i
+      where i.userId in :userIds
+      group by i.userId, i.status, i.refundStatus
+      """)
+  List<UserInquiryCount> countByUserIds(Collection<UUID> userIds);
 }
