@@ -5,11 +5,15 @@ import com.seoulaim.domain.file.entity.FileDomain;
 import com.seoulaim.domain.file.service.FileService;
 import com.seoulaim.domain.user.dto.NotificationSettingsResponse;
 import com.seoulaim.domain.user.dto.UpdateProfileRequest;
+import com.seoulaim.domain.user.dto.UserAccountInfo;
 import com.seoulaim.domain.user.dto.UserResponse;
 import com.seoulaim.domain.user.entity.User;
+import com.seoulaim.domain.user.entity.UserStatus;
+import com.seoulaim.domain.user.entity.WithdrawnBy;
 import com.seoulaim.domain.user.repository.UserRepository;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
+import com.seoulaim.global.util.LikePattern;
 import java.time.Clock;
 import java.util.Collection;
 import java.util.HashSet;
@@ -19,6 +23,8 @@ import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -69,6 +75,35 @@ public class UserService {
         .toList();
   }
 
+  /** 여러 회원 계정 정보 (어드민 화면용). 탈퇴 회원 포함, 없는 id 는 빠진다. */
+  public List<UserAccountInfo> findAccounts(Collection<UUID> userIds) {
+    if (userIds.isEmpty()) {
+      return List.of();
+    }
+    return userRepository.findAllById(new HashSet<>(userIds)).stream()
+        .map(UserAccountInfo::from)
+        .toList();
+  }
+
+  /** 이메일·닉네임 부분 일치(대소문자 무시) 회원 id (어드민 검색용). 탈퇴 회원은 이메일이 없어 닉네임으로만 걸린다. */
+  public List<UUID> searchUserIds(String keyword) {
+    return userRepository.findIdsByEmailOrNicknameLike(LikePattern.containing(keyword));
+  }
+
+  /** 어드민 회원 목록. status·keyword 는 null 이면 조건 없음. 가입 최신순. */
+  public Page<UserAccountInfo> searchAccounts(
+      UserStatus status, String keyword, int page, int size) {
+    String pattern = keyword == null || keyword.isBlank() ? null : LikePattern.containing(keyword);
+    return userRepository
+        .searchForAdmin(status, pattern, PageRequest.of(page, size))
+        .map(UserAccountInfo::from);
+  }
+
+  /** 어드민 회원 상세용 계정 정보. 없으면 USER_NOT_FOUND (탈퇴 회원 포함). */
+  public UserAccountInfo getAccount(UUID userId) {
+    return UserAccountInfo.from(getUser(userId));
+  }
+
   @Transactional
   public User createUser(String email, String passwordHash, String nickname) {
     if (userRepository.existsByEmail(email)) {
@@ -111,11 +146,22 @@ public class UserService {
    */
   @Transactional
   public boolean withdraw(UUID userId) {
+    return withdraw(userId, WithdrawnBy.SELF, null);
+  }
+
+  /**
+   * 탈퇴 처리 + 탈퇴 주체·사유 기록.
+   *
+   * @param reason 어드민 강퇴 사유 (본인 탈퇴는 null)
+   * @return 이번 호출로 탈퇴했으면 true, 이미 탈퇴한 회원이면 false
+   */
+  @Transactional
+  public boolean withdraw(UUID userId, WithdrawnBy withdrawnBy, String reason) {
     User user = getUser(userId);
     if (user.isWithdrawn()) {
       return false;
     }
-    user.withdraw(clock.instant());
+    user.withdraw(clock.instant(), withdrawnBy, reason);
     return true;
   }
 

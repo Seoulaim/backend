@@ -14,6 +14,7 @@ import com.seoulaim.domain.diary.entity.DiaryPaymentStatus;
 import com.seoulaim.domain.diary.repository.DiaryPaymentRepository;
 import com.seoulaim.domain.diary.repository.DiaryRepository;
 import com.seoulaim.domain.inquiry.admin.dto.AdminRefundApproveRequest;
+import com.seoulaim.domain.inquiry.admin.dto.AdminRefundRequestResponse;
 import com.seoulaim.domain.inquiry.entity.Inquiry;
 import com.seoulaim.domain.inquiry.entity.RefundStatus;
 import com.seoulaim.domain.inquiry.repository.InquiryRepository;
@@ -67,7 +68,16 @@ class RefundApprovalIntegrationTest {
     given(paymentGateway.cancel(eq(fixture.paymentKey()), anyString()))
         .willReturn(PaymentCancelResult.success("tx_1", Instant.now(), "{}"));
 
-    refundRequestService.approve(fixture.inquiryId(), new AdminRefundApproveRequest(null));
+    AdminRefundRequestResponse response =
+        refundRequestService.approve(fixture.inquiryId(), new AdminRefundApproveRequest(null));
+
+    // 응답의 계정 이력은 승인 결과를 반영한다 (승인된 환불 1, PAID 결제 0, 답변 전 문의 0)
+    assertThat(response.author().refundedCount()).isEqualTo(1);
+    assertThat(response.author().paidPaymentCount()).isZero();
+    assertThat(response.author().pendingInquiryCount()).isZero();
+    assertThat(response.author().joinedAt()).isNotNull();
+    assertThat(response.payment().diary().deleted()).isTrue();
+    assertThat(response.policy().notDownloaded().ok()).isTrue();
 
     DiaryPayment payment = diaryPaymentRepository.findById(fixture.paymentId()).orElseThrow();
     assertThat(payment.getStatus()).isEqualTo(DiaryPaymentStatus.REFUNDED);

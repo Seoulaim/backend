@@ -5,7 +5,7 @@ import com.seoulaim.domain.diary.service.DiaryPaymentService;
 import com.seoulaim.domain.inquiry.admin.dto.AdminRefundApproveRequest;
 import com.seoulaim.domain.inquiry.admin.dto.AdminRefundRejectRequest;
 import com.seoulaim.domain.inquiry.admin.dto.AdminRefundRequestResponse;
-import com.seoulaim.domain.inquiry.admin.dto.InquiryAuthor;
+import com.seoulaim.domain.inquiry.admin.dto.RefundAuthor;
 import com.seoulaim.domain.inquiry.entity.Inquiry;
 import com.seoulaim.domain.inquiry.entity.InquiryCategory;
 import com.seoulaim.domain.inquiry.repository.InquiryRepository;
@@ -46,7 +46,7 @@ public class RefundRequestService {
 
   private final InquiryRepository inquiryRepository;
   private final DiaryPaymentService diaryPaymentService;
-  private final InquiryAuthorLoader inquiryAuthorLoader;
+  private final RefundAuthorLoader refundAuthorLoader;
   private final EmailSender emailSender;
   private final ApplicationEventPublisher eventPublisher;
   private final Clock clock;
@@ -55,7 +55,7 @@ public class RefundRequestService {
   public List<AdminRefundRequestResponse> getRefundRequests() {
     List<Inquiry> inquiries =
         inquiryRepository.findAllByCategoryOrderByCreatedAtAscIdAsc(InquiryCategory.REFUND);
-    Map<UUID, InquiryAuthor> authors = inquiryAuthorLoader.load(inquiries);
+    Map<UUID, RefundAuthor> authors = refundAuthorLoader.load(inquiries);
     Map<UUID, PaymentRefundInfo> payments =
         diaryPaymentService
             .findRefundInfos(inquiries.stream().map(Inquiry::getPaymentId).distinct().toList())
@@ -108,7 +108,7 @@ public class RefundRequestService {
         exception == null ? null : exception.memo(),
         clock.instant());
 
-    InquiryAuthor author = inquiryAuthorLoader.load(inquiry);
+    RefundAuthor author = refundAuthorLoader.load(inquiry);
     if (author.email() == null) {
       log.warn("환불 완료 메일 생략: 작성자 이메일 없음 inquiryId={}", inquiry.getId());
     } else {
@@ -135,7 +135,7 @@ public class RefundRequestService {
     }
     inquiry.rejectRefund(reason, clock.instant());
 
-    InquiryAuthor author = inquiryAuthorLoader.load(inquiry);
+    RefundAuthor author = refundAuthorLoader.load(inquiry);
     if (author.email() == null) {
       log.warn("환불 거절 메일 생략: 작성자 이메일 없음 inquiryId={}", inquiry.getId());
     } else {
@@ -186,11 +186,11 @@ public class RefundRequestService {
   }
 
   private AdminRefundRequestResponse view(Inquiry inquiry) {
-    return view(inquiry, inquiryAuthorLoader.load(inquiry), findPayment(inquiry));
+    return view(inquiry, refundAuthorLoader.load(inquiry), findPayment(inquiry));
   }
 
   private static AdminRefundRequestResponse view(
-      Inquiry inquiry, InquiryAuthor author, PaymentRefundInfo payment) {
+      Inquiry inquiry, RefundAuthor author, PaymentRefundInfo payment) {
     Instant createdAt = inquiry.getCreatedAt();
     return AdminRefundRequestResponse.of(
         inquiry, author, payment, AdminInquiryService.ADMIN_NAME, RefundDeadline.of(createdAt));

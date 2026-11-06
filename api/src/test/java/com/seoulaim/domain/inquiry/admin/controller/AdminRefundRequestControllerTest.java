@@ -9,8 +9,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.seoulaim.domain.diary.dto.RefundPolicyCheck;
 import com.seoulaim.domain.inquiry.admin.dto.AdminRefundRequestResponse;
-import com.seoulaim.domain.inquiry.admin.dto.InquiryAuthor;
+import com.seoulaim.domain.inquiry.admin.dto.RefundAuthor;
 import com.seoulaim.domain.inquiry.entity.RefundStatus;
 import com.seoulaim.domain.inquiry.service.RefundRequestService;
 import com.seoulaim.global.exception.BusinessException;
@@ -44,7 +45,18 @@ class AdminRefundRequestControllerTest {
   private static AdminRefundRequestResponse requested(UUID id) {
     return new AdminRefundRequestResponse(
         id,
-        new InquiryAuthor(UUID.randomUUID(), "Jin", "jin@example.com"),
+        new RefundAuthor(
+            UUID.randomUUID(),
+            "Jin",
+            "jin@example.com",
+            Instant.parse("2026-10-01T00:00:00Z"),
+            "en",
+            2,
+            1,
+            1,
+            0,
+            1,
+            false),
         "en",
         "Refund for my second diary",
         "Mistake",
@@ -59,9 +71,31 @@ class AdminRefundRequestControllerTest {
             Instant.parse("2026-11-04T03:00:00Z"),
             Instant.parse("2026-11-04T02:59:00Z"),
             null,
-            new AdminRefundRequestResponse.Diary(UUID.randomUUID(), "My Diary", false, 4, null)),
+            new AdminRefundRequestResponse.Diary(
+                UUID.randomUUID(),
+                "My Diary",
+                false,
+                4,
+                null,
+                Instant.parse("2026-11-04T02:00:00Z"),
+                3,
+                Instant.parse("2026-11-04T02:50:00Z"),
+                5,
+                List.of(),
+                null,
+                List.of(
+                    new AdminRefundRequestResponse.Download(
+                        "PDF", 4, Instant.parse("2026-11-04T05:00:00Z"))),
+                false)),
         true,
-        LocalDate.of(2026, 11, 10));
+        LocalDate.of(2026, 11, 10),
+        new RefundPolicyCheck(
+            new RefundPolicyCheck.Within7Days(
+                true, Instant.parse("2026-11-04T03:00:00Z"), Instant.parse("2026-11-11T03:00:00Z")),
+            new RefundPolicyCheck.NotEdited(true, null),
+            new RefundPolicyCheck.NotFinalized(true, null),
+            new RefundPolicyCheck.NotDownloaded(false, 1, Instant.parse("2026-11-04T05:00:00Z")),
+            false));
   }
 
   @Test
@@ -80,7 +114,18 @@ class AdminRefundRequestControllerTest {
         .andExpect(jsonPath("$[0].payment.diary.first").value(false))
         .andExpect(jsonPath("$[0].payment.diary.pages").value(4))
         .andExpect(jsonPath("$[0].refundWithinPolicy").value(true))
-        .andExpect(jsonPath("$[0].deadline").value("2026-11-10"));
+        .andExpect(jsonPath("$[0].deadline").value("2026-11-10"))
+        .andExpect(jsonPath("$[0].policy.within7Days.deadlineAt").value("2026-11-11T03:00:00Z"))
+        .andExpect(jsonPath("$[0].policy.notDownloaded.ok").value(false))
+        .andExpect(jsonPath("$[0].policy.notDownloaded.downloadCount").value(1))
+        .andExpect(jsonPath("$[0].policy.allOk").value(false))
+        .andExpect(jsonPath("$[0].payment.diary.saveCount").value(3))
+        .andExpect(jsonPath("$[0].payment.diary.pageKeys").isArray())
+        .andExpect(jsonPath("$[0].payment.diary.downloads[0].format").value("PDF"))
+        .andExpect(jsonPath("$[0].payment.diary.deleted").value(false))
+        .andExpect(jsonPath("$[0].author.joinedAt").value("2026-10-01T00:00:00Z"))
+        .andExpect(jsonPath("$[0].author.refundedCount").value(1))
+        .andExpect(jsonPath("$[0].author.withdrawn").value(false));
   }
 
   @Test

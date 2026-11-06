@@ -1,6 +1,7 @@
 package com.seoulaim.domain.diary.controller;
 
 import com.seoulaim.domain.diary.dto.DiaryCreateResponse;
+import com.seoulaim.domain.diary.dto.DiaryDownloadRequest;
 import com.seoulaim.domain.diary.dto.DiaryEditorResponse;
 import com.seoulaim.domain.diary.dto.DiaryFinishedPagesRequest;
 import com.seoulaim.domain.diary.dto.DiaryFinishedPagesResponse;
@@ -109,5 +110,15 @@ public class DiaryController {
       @PathVariable UUID diaryId,
       @Valid @RequestBody DiaryFinishedPagesRequest request) {
     return diaryService.saveFinishedPages(userId, diaryId, request);
+  }
+
+  @Operation(summary = "완성 다이어리 다운로드 기록 (PDF/JPG. 완성 전이면 409)")
+  @PostMapping("/{diaryId}/downloads")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void recordDownload(
+      @Parameter(hidden = true) @CurrentUserId UUID userId,
+      @PathVariable UUID diaryId,
+      @Valid @RequestBody DiaryDownloadRequest request) {
+    diaryService.recordDownload(userId, diaryId, request);
   }
 }

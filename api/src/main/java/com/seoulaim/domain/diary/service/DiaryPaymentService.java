@@ -8,11 +8,16 @@ import com.seoulaim.domain.diary.dto.DiaryPaymentCreateResponse;
 import com.seoulaim.domain.diary.dto.MyPaymentResponse;
 import com.seoulaim.domain.diary.dto.PaymentRefundInfo;
 import com.seoulaim.domain.diary.dto.RefundRequestCheck;
+import com.seoulaim.domain.diary.dto.UserDiaryStats;
+import com.seoulaim.domain.diary.dto.UserPaymentInfo;
 import com.seoulaim.domain.diary.entity.Diary;
+import com.seoulaim.domain.diary.entity.DiaryDownload;
 import com.seoulaim.domain.diary.entity.DiaryPayment;
 import com.seoulaim.domain.diary.entity.DiaryPaymentStatus;
+import com.seoulaim.domain.diary.repository.DiaryDownloadRepository;
 import com.seoulaim.domain.diary.repository.DiaryPaymentRepository;
 import com.seoulaim.domain.diary.repository.DiaryRepository;
+import com.seoulaim.domain.diary.repository.UserCount;
 import com.seoulaim.domain.inquiry.service.RefundRequestQueryService;
 import com.seoulaim.domain.order.gateway.PaymentCancelResult;
 import com.seoulaim.domain.order.gateway.PaymentGateway;
@@ -59,6 +64,7 @@ public class DiaryPaymentService {
   private final DiaryService diaryService;
   private final DiaryRepository diaryRepository;
   private final DiaryPaymentRepository diaryPaymentRepository;
+  private final DiaryDownloadRepository diaryDownloadRepository;
   private final PaymentGateway paymentGateway;
   private final RefundRequestQueryService refundRequestQueryService;
   private final DiaryProperties diaryProperties;
@@ -133,7 +139,8 @@ public class DiaryPaymentService {
       case PaymentResult.Success success -> {
         payment.markPaid(
             success.paymentKey() == null ? request.paymentKey() : success.paymentKey(),
-            success.approvedAt() == null ? clock.instant() : success.approvedAt());
+            success.approvedAt() == null ? clock.instant() : success.approvedAt(),
+            success.method());
         diaryRepository
             .findById(payment.getDiaryId())
             .orElseThrow(() -> new BusinessException(ErrorCode.DIARY_NOT_FOUND))
@@ -206,20 +213,39 @@ public class DiaryPaymentService {
         .toList();
   }
 
-  /** 환불 관리용 결제 정보 (다이어리 포함). 없는 id 는 빠진다. */
+  /** 환불 관리용 결제 정보 (다이어리·다운로드 이력·지금 시점 정책 판정 포함). 없는 id 는 빠진다. */
   public List<PaymentRefundInfo> findRefundInfos(Collection<UUID> paymentIds) {
     if (paymentIds.isEmpty()) {
       return List.of();
     }
-    List<DiaryPayment> payments = diaryPaymentRepository.findAllById(paymentIds);
-    Map<UUID, Diary> diaries =
-        diaryRepository
-            .findAllByIdIn(payments.stream().map(DiaryPayment::getDiaryId).distinct().toList())
-            .stream()
-            .collect(Collectors.toMap(Diary::getId, Function.identity()));
-    return payments.stream()
-        .map(payment -> PaymentRefundInfo.of(payment, diaries.get(payment.getDiaryId())))
+    return toRefundInfos(diaryPaymentRepository.findAllById(paymentIds));
+  }
+
+  /** 어드민 회원 상세: 회원의 PAID·REFUNDED 결제 최신순. */
+  public List<UserPaymentInfo> findPaymentsOfUserForAdmin(UUID userId) {
+    return diaryPaymentRepository
+        .findAllByUserIdAndStatusInOrderByPaidAtDescIdDesc(userId, HISTORY_STATUSES)
+        .stream()
+        .map(UserPaymentInfo::from)
         .toList();
+  }
+
+  /** 회원별 다이어리 수·PAID 결제 수. 없는 회원은 {@link UserDiaryStats#EMPTY}. */
+  public Map<UUID, UserDiaryStats> findUserStats(Collection<UUID> userIds) {
+    if (userIds.isEmpty()) {
+      return Map.of();
+    }
+    List<UUID> ids = userIds.stream().distinct().toList();
+    Map<UUID, Long> diaryCounts = toCountMap(diaryRepository.countVisibleByUserIds(ids));
+    Map<UUID, Long> paidCounts =
+        toCountMap(diaryPaymentRepository.countByUserIdsAndStatus(ids, DiaryPaymentStatus.PAID));
+    return ids.stream()
+        .collect(
+            Collectors.toMap(
+                Function.identity(),
+                id ->
+                    new UserDiaryStats(
+                        diaryCounts.getOrDefault(id, 0L), paidCounts.getOrDefault(id, 0L))));
   }
 
   /**
@@ -267,7 +293,36 @@ public class DiaryPaymentService {
       // TODO(#55): 삭제한 다이어리의 사진·완성 페이지 S3 객체 정리. 지금은 soft delete 만
       diary.delete(now);
     }
-    return PaymentRefundInfo.of(payment, diary);
+    return PaymentRefundInfo.of(
+        payment,
+        diary,
+        diaryDownloadRepository.findAllByDiaryIdInOrderByCreatedAtDescIdDesc(
+            List.of(diary.getId())),
+        now);
+  }
+
+  private List<PaymentRefundInfo> toRefundInfos(List<DiaryPayment> payments) {
+    List<UUID> diaryIds = payments.stream().map(DiaryPayment::getDiaryId).distinct().toList();
+    Map<UUID, Diary> diaries =
+        diaryRepository.findAllByIdIn(diaryIds).stream()
+            .collect(Collectors.toMap(Diary::getId, Function.identity()));
+    Map<UUID, List<DiaryDownload>> downloads =
+        diaryDownloadRepository.findAllByDiaryIdInOrderByCreatedAtDescIdDesc(diaryIds).stream()
+            .collect(Collectors.groupingBy(DiaryDownload::getDiaryId));
+    Instant now = clock.instant();
+    return payments.stream()
+        .map(
+            payment ->
+                PaymentRefundInfo.of(
+                    payment,
+                    diaries.get(payment.getDiaryId()),
+                    downloads.getOrDefault(payment.getDiaryId(), List.of()),
+                    now))
+        .toList();
+  }
+
+  private static Map<UUID, Long> toCountMap(List<UserCount> counts) {
+    return counts.stream().collect(Collectors.toMap(UserCount::getUserId, UserCount::getCount));
   }
 
   // DIA-yyyyMMdd-10자리. 토스 orderId 규칙(6~64자, 영숫자·-·_)을 만족한다

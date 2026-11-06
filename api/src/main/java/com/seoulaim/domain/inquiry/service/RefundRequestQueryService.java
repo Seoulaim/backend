@@ -1,17 +1,29 @@
 package com.seoulaim.domain.inquiry.service;
 
+import com.seoulaim.domain.inquiry.dto.PaymentRefundRequest;
+import com.seoulaim.domain.inquiry.dto.UserInquiryStats;
+import com.seoulaim.domain.inquiry.dto.UserInquirySummary;
+import com.seoulaim.domain.inquiry.entity.Inquiry;
+import com.seoulaim.domain.inquiry.entity.InquiryCategory;
+import com.seoulaim.domain.inquiry.entity.InquiryStatus;
 import com.seoulaim.domain.inquiry.entity.RefundStatus;
 import com.seoulaim.domain.inquiry.repository.InquiryRepository;
+import com.seoulaim.domain.inquiry.repository.UserInquiryCount;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 다른 도메인(diary 결제 내역)이 환불 요청 여부를 조회할 때 쓴다.
+ * 다른 도메인(diary 결제 내역, 어드민 결제·회원 관리)이 환불 요청 여부·문의 이력을 조회할 때 쓴다.
  *
  * <p>{@link InquiryService} 가 DiaryPaymentService 를 쓰므로, 순환 의존을 피하려고 저장소만 쓰는 조회 전용 서비스로 둔다.
  */
@@ -29,5 +41,58 @@ public class RefundRequestQueryService {
     }
     return new HashSet<>(
         inquiryRepository.findPaymentIdsByRefundStatus(paymentIds, RefundStatus.REQUESTED));
+  }
+
+  /** 결제별 가장 최근 환불 요청 (어드민 결제 관리). 환불 요청이 없는 결제는 빠진다. */
+  public Map<UUID, PaymentRefundRequest> findLatestRefundRequests(Collection<UUID> paymentIds) {
+    if (paymentIds.isEmpty()) {
+      return Map.of();
+    }
+    Map<UUID, PaymentRefundRequest> latest = new HashMap<>();
+    for (Inquiry inquiry :
+        inquiryRepository.findAllByPaymentIdInAndCategoryOrderByCreatedAtDescIdDesc(
+            paymentIds, InquiryCategory.REFUND)) {
+      latest.putIfAbsent(
+          inquiry.getPaymentId(),
+          new PaymentRefundRequest(inquiry.getId(), inquiry.getRefundStatus().apiValue()));
+    }
+    return latest;
+  }
+
+  /** 어드민 회원 상세: 회원의 모든 문의(환불 포함) 최신순. */
+  public List<UserInquirySummary> findInquiriesOfUser(UUID userId) {
+    return inquiryRepository.findAllByUserIdOrderByCreatedAtDescIdDesc(userId).stream()
+        .map(UserInquirySummary::from)
+        .toList();
+  }
+
+  /** 회원별 승인·거절 환불 수, 답변 전 문의 수. 문의가 없는 회원은 {@link UserInquiryStats#EMPTY}. */
+  public Map<UUID, UserInquiryStats> countUserStats(Collection<UUID> userIds) {
+    if (userIds.isEmpty()) {
+      return Map.of();
+    }
+    List<UUID> ids = userIds.stream().distinct().toList();
+    Map<UUID, long[]> counts = new HashMap<>();
+    for (UserInquiryCount row : inquiryRepository.countByUserIds(ids)) {
+      long[] count = counts.computeIfAbsent(row.getUserId(), id -> new long[3]);
+      if (row.getRefundStatus() == RefundStatus.REFUNDED) {
+        count[0] += row.getCount();
+      } else if (row.getRefundStatus() == RefundStatus.REJECTED) {
+        count[1] += row.getCount();
+      }
+      if (row.getStatus() == InquiryStatus.RECEIVED) {
+        count[2] += row.getCount();
+      }
+    }
+    return ids.stream()
+        .collect(
+            Collectors.toMap(
+                Function.identity(),
+                id -> {
+                  long[] count = counts.get(id);
+                  return count == null
+                      ? UserInquiryStats.EMPTY
+                      : new UserInquiryStats(count[0], count[1], count[2]);
+                }));
   }
 }

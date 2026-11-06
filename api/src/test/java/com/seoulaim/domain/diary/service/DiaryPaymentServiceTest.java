@@ -18,11 +18,16 @@ import com.seoulaim.domain.diary.dto.DiaryPaymentCreateResponse;
 import com.seoulaim.domain.diary.dto.MyPaymentResponse;
 import com.seoulaim.domain.diary.dto.PaymentRefundInfo;
 import com.seoulaim.domain.diary.dto.RefundRequestCheck;
+import com.seoulaim.domain.diary.dto.UserDiaryStats;
 import com.seoulaim.domain.diary.entity.Diary;
+import com.seoulaim.domain.diary.entity.DiaryDownload;
+import com.seoulaim.domain.diary.entity.DiaryDownloadFormat;
 import com.seoulaim.domain.diary.entity.DiaryPayment;
 import com.seoulaim.domain.diary.entity.DiaryPaymentStatus;
+import com.seoulaim.domain.diary.repository.DiaryDownloadRepository;
 import com.seoulaim.domain.diary.repository.DiaryPaymentRepository;
 import com.seoulaim.domain.diary.repository.DiaryRepository;
+import com.seoulaim.domain.diary.repository.UserCount;
 import com.seoulaim.domain.inquiry.service.RefundRequestQueryService;
 import com.seoulaim.domain.order.gateway.PaymentCancelResult;
 import com.seoulaim.domain.order.gateway.PaymentGateway;
@@ -47,6 +52,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class DiaryPaymentServiceTest {
@@ -59,6 +65,7 @@ class DiaryPaymentServiceTest {
   @Mock private DiaryService diaryService;
   @Mock private DiaryRepository diaryRepository;
   @Mock private DiaryPaymentRepository diaryPaymentRepository;
+  @Mock private DiaryDownloadRepository diaryDownloadRepository;
   @Mock private PaymentGateway paymentGateway;
   @Mock private RefundRequestQueryService refundRequestQueryService;
 
@@ -71,6 +78,7 @@ class DiaryPaymentServiceTest {
             diaryService,
             diaryRepository,
             diaryPaymentRepository,
+            diaryDownloadRepository,
             paymentGateway,
             refundRequestQueryService,
             new DiaryProperties(PRICE, 2),
@@ -165,7 +173,7 @@ class DiaryPaymentServiceTest {
   }
 
   @Test
-  @DisplayName("승인 성공 시 결제는 PAID, 다이어리는 paid=true 가 된다")
+  @DisplayName("승인 성공 시 결제는 PAID(토스 결제수단 저장), 다이어리는 paid=true 가 된다")
   void confirm_성공_paid() {
     Diary diary = Diary.create(USER_ID, false);
     DiaryPayment payment = givenLockedPayment(diary);
@@ -182,6 +190,7 @@ class DiaryPaymentServiceTest {
     assertThat(payment.getStatus()).isEqualTo(DiaryPaymentStatus.PAID);
     assertThat(payment.getPaidAt()).isEqualTo(approvedAt);
     assertThat(payment.getTossPaymentKey()).isEqualTo("pk_1");
+    assertThat(payment.getMethod()).isEqualTo("카드");
     assertThat(diary.isPaid()).isTrue();
   }
 
@@ -276,7 +285,7 @@ class DiaryPaymentServiceTest {
   void getMyPayments_환불가능판단() {
     Diary editing = Diary.create(USER_ID, false);
     Diary finalized = Diary.create(USER_ID, false);
-    finalized.finalizeWith(List.of(), Map.of(), NOW);
+    finalized.finalizeWith(List.of(), Map.of(), 0, NOW);
     Diary deleted = Diary.create(USER_ID, false);
     deleted.delete(NOW);
 
@@ -378,7 +387,7 @@ class DiaryPaymentServiceTest {
   @DisplayName("환불 정책 판정: 완성(FINALIZED)한 다이어리면 정책 밖")
   void checkRefundRequest_완성후_정책밖() {
     Diary diary = Diary.create(USER_ID, false);
-    diary.finalizeWith(List.of(), Map.of(), NOW);
+    diary.finalizeWith(List.of(), Map.of(), 0, NOW);
     DiaryPayment payment = givenOwnedPayment(diary, NOW.minus(Duration.ofDays(1)));
 
     assertThat(diaryPaymentService.checkRefundRequest(USER_ID, payment.getId()))
@@ -411,7 +420,7 @@ class DiaryPaymentServiceTest {
   @DisplayName("환불: 첫(무료) 다이어리는 결제만 REFUNDED·paid=false 로 되돌리고 꾸민 내용은 남긴다")
   void refund_첫다이어리_paid만해제() {
     Diary first = Diary.create(USER_ID, true);
-    first.saveSpreads(List.of(Map.of("p", 1), Map.of("p", 2), Map.of("p", 3)), Map.of(), NOW);
+    first.saveSpreads(List.of(Map.of("p", 1), Map.of("p", 2), Map.of("p", 3)), Map.of(), 0, NOW);
     first.markPaid();
     DiaryPayment payment = givenLockedPaidPayment(first);
     given(paymentGateway.cancel("pk", CANCEL_REASON))
@@ -495,6 +504,72 @@ class DiaryPaymentServiceTest {
         .extracting("errorCode")
         .isEqualTo(ErrorCode.PAYMENT_REFUND_FAILED);
     verify(paymentGateway, never()).cancel(anyString(), anyString());
+  }
+
+  @Test
+  @DisplayName("환불 관리 정보: 다운로드 기록이 있으면 policy.notDownloaded=false, 다이어리에 다운로드 이력이 붙는다")
+  void findRefundInfos_다운로드기록후_notDownloadedFalse() {
+    Diary diary = Diary.create(USER_ID, false);
+    diary.markPaid();
+    diary.finalizeWith(List.of(), Map.of(), 2, NOW.minusSeconds(3600));
+    DiaryPayment payment = paid(diary, NOW.minus(Duration.ofDays(1)));
+    DiaryDownload download =
+        DiaryDownload.create(diary.getId(), USER_ID, DiaryDownloadFormat.JPG, 5);
+    ReflectionTestUtils.setField(download, "createdAt", NOW.minusSeconds(60));
+    given(diaryPaymentRepository.findAllById(List.of(payment.getId())))
+        .willReturn(List.of(payment));
+    given(diaryRepository.findAllByIdIn(List.of(diary.getId()))).willReturn(List.of(diary));
+    given(
+            diaryDownloadRepository.findAllByDiaryIdInOrderByCreatedAtDescIdDesc(
+                List.of(diary.getId())))
+        .willReturn(List.of(download));
+
+    PaymentRefundInfo info =
+        diaryPaymentService.findRefundInfos(List.of(payment.getId())).getFirst();
+
+    assertThat(info.policy().notDownloaded().ok()).isFalse();
+    assertThat(info.policy().notDownloaded().downloadCount()).isEqualTo(1);
+    assertThat(info.policy().notDownloaded().lastDownloadedAt()).isEqualTo(NOW.minusSeconds(60));
+    assertThat(info.policy().within7Days().ok()).isTrue();
+    assertThat(info.policy().allOk()).isFalse();
+    assertThat(info.diary().downloads())
+        .containsExactly(
+            new PaymentRefundInfo.DownloadInfo(DiaryDownloadFormat.JPG, 5, NOW.minusSeconds(60)));
+    assertThat(info.diary().photoCount()).isEqualTo(2);
+    assertThat(info.diary().pageKeys()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("회원별 통계: 보이는 다이어리 수와 PAID 결제 수, 없는 회원은 0")
+  void findUserStats_집계() {
+    UUID other = UUID.randomUUID();
+    UserCount diaries = userCount(USER_ID, 2);
+    UserCount payments = userCount(USER_ID, 1);
+    given(diaryRepository.countVisibleByUserIds(List.of(USER_ID, other)))
+        .willReturn(List.of(diaries));
+    given(
+            diaryPaymentRepository.countByUserIdsAndStatus(
+                List.of(USER_ID, other), DiaryPaymentStatus.PAID))
+        .willReturn(List.of(payments));
+
+    Map<UUID, UserDiaryStats> stats = diaryPaymentService.findUserStats(List.of(USER_ID, other));
+
+    assertThat(stats.get(USER_ID)).isEqualTo(new UserDiaryStats(2, 1));
+    assertThat(stats.get(other)).isEqualTo(UserDiaryStats.EMPTY);
+  }
+
+  private static UserCount userCount(UUID userId, long count) {
+    return new UserCount() {
+      @Override
+      public UUID getUserId() {
+        return userId;
+      }
+
+      @Override
+      public long getCount() {
+        return count;
+      }
+    };
   }
 
   private DiaryPayment givenLockedPaidPayment(Diary diary) {

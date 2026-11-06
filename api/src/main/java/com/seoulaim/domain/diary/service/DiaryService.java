@@ -6,13 +6,17 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.seoulaim.domain.diary.admin.dto.AdminDiarySummaryResponse;
 import com.seoulaim.domain.diary.dto.DiaryCreateResponse;
+import com.seoulaim.domain.diary.dto.DiaryDownloadRequest;
 import com.seoulaim.domain.diary.dto.DiaryEditorResponse;
 import com.seoulaim.domain.diary.dto.DiaryFinishedPagesRequest;
 import com.seoulaim.domain.diary.dto.DiaryFinishedPagesResponse;
 import com.seoulaim.domain.diary.dto.DiaryNewTermsResponse;
 import com.seoulaim.domain.diary.dto.DiarySpreadsRequest;
 import com.seoulaim.domain.diary.dto.DiarySummaryResponse;
+import com.seoulaim.domain.diary.dto.UserDiaryInfo;
 import com.seoulaim.domain.diary.entity.Diary;
+import com.seoulaim.domain.diary.entity.DiaryDownload;
+import com.seoulaim.domain.diary.repository.DiaryDownloadRepository;
 import com.seoulaim.domain.diary.repository.DiaryRepository;
 import com.seoulaim.domain.file.dto.FileDetail;
 import com.seoulaim.domain.file.service.FileService;
@@ -49,6 +53,7 @@ public class DiaryService {
       new TypeReference<>() {};
 
   private final DiaryRepository diaryRepository;
+  private final DiaryDownloadRepository diaryDownloadRepository;
   private final DiaryAssetService diaryAssetService;
   private final FileService fileService;
   private final DiaryProperties diaryProperties;
@@ -112,14 +117,25 @@ public class DiaryService {
   public void saveSpreads(UUID userId, UUID diaryId, DiarySpreadsRequest request) {
     Diary diary = findMyDiary(userId, diaryId);
     EditData data = prepareEditData(userId, diary, request);
-    diary.saveSpreads(data.spreads(), data.placePhotos(), clock.instant());
+    diary.saveSpreads(data.spreads(), data.placePhotos(), data.photoCount(), clock.instant());
   }
 
   @Transactional
   public void finalizeDiary(UUID userId, UUID diaryId, DiarySpreadsRequest request) {
     Diary diary = findMyDiary(userId, diaryId);
     EditData data = prepareEditData(userId, diary, request);
-    diary.finalizeWith(data.spreads(), data.placePhotos(), clock.instant());
+    diary.finalizeWith(data.spreads(), data.placePhotos(), data.photoCount(), clock.instant());
+  }
+
+  /** 완성 다이어리 다운로드 기록 (파일은 클라이언트가 만든다). 완성 전이면 DIARY_NOT_FINISHED. */
+  @Transactional
+  public void recordDownload(UUID userId, UUID diaryId, DiaryDownloadRequest request) {
+    Diary diary = findMyDiary(userId, diaryId);
+    if (!diary.isFinalized()) {
+      throw new BusinessException(ErrorCode.DIARY_NOT_FINISHED);
+    }
+    diaryDownloadRepository.save(
+        DiaryDownload.create(diary.getId(), userId, request.format(), request.pageCount()));
   }
 
   /**
@@ -151,6 +167,23 @@ public class DiaryService {
         .toList();
   }
 
+  /** 어드민 회원 상세: 회원의 모든 다이어리(삭제·미결제 포함) 최신순과 다운로드 횟수. */
+  public List<UserDiaryInfo> findDiariesOfUserForAdmin(UUID userId) {
+    List<Diary> diaries = diaryRepository.findAllByUserIdOrderByCreatedAtDescIdDesc(userId);
+    if (diaries.isEmpty()) {
+      return List.of();
+    }
+    Map<UUID, Long> downloadCounts =
+        diaryDownloadRepository
+            .findAllByDiaryIdInOrderByCreatedAtDescIdDesc(
+                diaries.stream().map(Diary::getId).toList())
+            .stream()
+            .collect(Collectors.groupingBy(DiaryDownload::getDiaryId, Collectors.counting()));
+    return diaries.stream()
+        .map(diary -> UserDiaryInfo.of(diary, downloadCounts.getOrDefault(diary.getId(), 0L)))
+        .toList();
+  }
+
   /** 삭제되지 않은 내 다이어리. 없거나 남의 것이면 DIARY_NOT_FOUND. */
   Diary findMyDiary(UUID userId, UUID diaryId) {
     return diaryRepository
@@ -176,6 +209,7 @@ public class DiaryService {
       throw new BusinessException(ErrorCode.DIARY_PAYMENT_REQUIRED);
     }
     Map<UUID, String> photoKeys = parsePlacePhotos(placePhotos);
+    int photoCount = countPlacePhotos(placePhotos);
     validateSize(spreads, placePhotos);
 
     Map<UUID, FileDetail> files =
@@ -190,7 +224,17 @@ public class DiaryService {
 
     return new EditData(
         objectMapper.convertValue(spreads, SPREADS_TYPE),
-        objectMapper.convertValue(placePhotos, PLACE_PHOTOS_TYPE));
+        objectMapper.convertValue(placePhotos, PLACE_PHOTOS_TYPE),
+        photoCount);
+  }
+
+  // parsePlacePhotos 로 형태를 검증한 뒤 호출. 중복 fileId 도 항목마다 센다
+  private static int countPlacePhotos(JsonNode placePhotos) {
+    int count = 0;
+    for (JsonNode photos : (Iterable<JsonNode>) placePhotos::elements) {
+      count += photos.size();
+    }
+    return count;
   }
 
   // { [placeId | "other"]: [{ id, key }] } 형태만 받는다. 반환: fileId → key
@@ -281,5 +325,5 @@ public class DiaryService {
     return new BusinessException(ErrorCode.COMMON_INVALID_REQUEST, Map.of(field, message));
   }
 
-  private record EditData(List<Object> spreads, Map<String, Object> placePhotos) {}
+  private record EditData(List<Object> spreads, Map<String, Object> placePhotos, int photoCount) {}
 }

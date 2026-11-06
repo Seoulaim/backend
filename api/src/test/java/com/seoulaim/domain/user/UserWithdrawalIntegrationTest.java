@@ -28,6 +28,7 @@ import com.seoulaim.domain.survey.entity.SurveyResponse;
 import com.seoulaim.domain.survey.repository.SurveyResponseRepository;
 import com.seoulaim.domain.user.entity.User;
 import com.seoulaim.domain.user.entity.UserStatus;
+import com.seoulaim.domain.user.entity.WithdrawnBy;
 import com.seoulaim.domain.user.repository.UserRepository;
 import com.seoulaim.domain.user.service.UserService;
 import com.seoulaim.domain.user.service.UserWithdrawalService;
@@ -145,6 +146,8 @@ class UserWithdrawalIntegrationTest {
     User withdrawn = userRepository.findById(userId).orElseThrow();
     assertThat(withdrawn.getStatus()).isEqualTo(UserStatus.WITHDRAWN);
     assertThat(withdrawn.getEmail()).isNull();
+    assertThat(withdrawn.getWithdrawnBy()).isEqualTo(WithdrawnBy.SELF);
+    assertThat(withdrawn.getWithdrawReason()).isNull();
     assertThat(userBiasRepository.findAllWithArtistByUserId(userId)).isEmpty();
     assertThat(travelPlanRepository.existsByUserId(userId)).isFalse();
     assertThat(diaryRepository.findById(diary.getId()).orElseThrow().isDeleted()).isTrue();

@@ -37,6 +37,7 @@ public enum ErrorCode {
   USER_EMAIL_DUPLICATED(HttpStatus.CONFLICT, "USER_EMAIL_DUPLICATED", "이미 사용 중인 이메일입니다"),
   USER_SUSPENDED(HttpStatus.FORBIDDEN, "USER_SUSPENDED", "이용이 정지된 계정입니다"),
   USER_INVALID_NICKNAME(HttpStatus.BAD_REQUEST, "USER_INVALID_NICKNAME", "닉네임은 1~20자여야 합니다"),
+  USER_ALREADY_WITHDRAWN(HttpStatus.CONFLICT, "USER_ALREADY_WITHDRAWN", "이미 탈퇴한 회원입니다"),
 
   // ARTIST
   ARTIST_GROUP_NOT_FOUND(HttpStatus.NOT_FOUND, "ARTIST_GROUP_NOT_FOUND", "그룹을 찾을 수 없습니다"),
@@ -98,6 +99,7 @@ public enum ErrorCode {
   PAYMENT_CONSENT_REQUIRED(
       HttpStatus.BAD_REQUEST, "PAYMENT_CONSENT_REQUIRED", "환불 규정에 동의해야 결제할 수 있습니다"),
   PAYMENT_REFUND_FAILED(HttpStatus.BAD_GATEWAY, "PAYMENT_REFUND_FAILED", "결제 취소(환불)에 실패했습니다"),
+  PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "PAYMENT_NOT_FOUND", "결제를 찾을 수 없습니다"),
 
   // DIARY
   DIARY_NOT_FOUND(HttpStatus.NOT_FOUND, "DIARY_NOT_FOUND", "다이어리를 찾을 수 없습니다"),

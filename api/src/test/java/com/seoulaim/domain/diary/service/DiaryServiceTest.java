@@ -11,11 +11,15 @@ import static org.mockito.Mockito.verify;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.seoulaim.domain.diary.dto.DiaryCreateResponse;
+import com.seoulaim.domain.diary.dto.DiaryDownloadRequest;
 import com.seoulaim.domain.diary.dto.DiaryEditorResponse;
 import com.seoulaim.domain.diary.dto.DiaryFinishedPagesRequest;
 import com.seoulaim.domain.diary.dto.DiaryFinishedPagesResponse;
 import com.seoulaim.domain.diary.dto.DiarySpreadsRequest;
 import com.seoulaim.domain.diary.entity.Diary;
+import com.seoulaim.domain.diary.entity.DiaryDownload;
+import com.seoulaim.domain.diary.entity.DiaryDownloadFormat;
+import com.seoulaim.domain.diary.repository.DiaryDownloadRepository;
 import com.seoulaim.domain.diary.repository.DiaryRepository;
 import com.seoulaim.domain.file.dto.FileDetail;
 import com.seoulaim.domain.file.entity.FileDomain;
@@ -51,6 +55,7 @@ class DiaryServiceTest {
   private final ObjectMapper objectMapper = new ObjectMapper();
 
   @Mock private DiaryRepository diaryRepository;
+  @Mock private DiaryDownloadRepository diaryDownloadRepository;
   @Mock private DiaryAssetService diaryAssetService;
   @Mock private FileService fileService;
 
@@ -61,6 +66,7 @@ class DiaryServiceTest {
     diaryService =
         new DiaryService(
             diaryRepository,
+            diaryDownloadRepository,
             diaryAssetService,
             fileService,
             new DiaryProperties(PRICE, FREE_SPREADS),
@@ -137,6 +143,8 @@ class DiaryServiceTest {
 
     assertThat(diary.getSpreads()).hasSize(FREE_SPREADS);
     assertThat(diary.getLastEditedAt()).isEqualTo(NOW);
+    assertThat(diary.getSaveCount()).isEqualTo(1);
+    assertThat(diary.getLastSavedAt()).isEqualTo(NOW);
   }
 
   @Test
@@ -178,7 +186,7 @@ class DiaryServiceTest {
   @DisplayName("FINALIZED 다이어리에 저장하면 409 DIARY_FINALIZED")
   void saveSpreads_완성후_409() {
     Diary diary = Diary.create(USER_ID, true);
-    diary.finalizeWith(List.of(), Map.of(), NOW);
+    diary.finalizeWith(List.of(), Map.of(), 0, NOW);
     givenMyDiary(diary);
 
     assertThatThrownBy(() -> diaryService.saveSpreads(USER_ID, diary.getId(), spreads(1)))
@@ -228,6 +236,63 @@ class DiaryServiceTest {
 
     verify(fileService).markLinked(List.of(fileId));
     assertThat(diary.getPlacePhotos()).containsOnlyKeys("other");
+  }
+
+  @Test
+  @DisplayName("저장할 때마다 save_count 가 늘고, photo_count 는 placePhotos 전체 항목 수(같은 사진 중복 포함)로 갱신된다")
+  void saveSpreads_이력_저장횟수와사진수() {
+    Diary diary = givenMyDiary(Diary.create(USER_ID, true));
+    UUID first = UUID.randomUUID();
+    UUID second = UUID.randomUUID();
+    given(fileService.findDetails(anyList()))
+        .willReturn(
+            List.of(file(first, USER_ID, "diary/a.jpg"), file(second, USER_ID, "diary/b.jpg")));
+    String photos =
+        """
+        {"p1":[{"id":"%s","key":"diary/a.jpg"},{"id":"%s","key":"diary/b.jpg"}],
+         "other":[{"id":"%s","key":"diary/a.jpg"}]}
+        """
+            .formatted(first, second, first);
+
+    diaryService.saveSpreads(USER_ID, diary.getId(), request("[]", photos));
+    diaryService.saveSpreads(USER_ID, diary.getId(), request("[]", photos));
+
+    assertThat(diary.getSaveCount()).isEqualTo(2);
+    assertThat(diary.getPhotoCount()).isEqualTo(3);
+    assertThat(diary.getLastSavedAt()).isEqualTo(NOW);
+  }
+
+  @Test
+  @DisplayName("완성 전 다이어리의 다운로드 기록은 409 DIARY_NOT_FINISHED 이고 저장하지 않는다")
+  void recordDownload_미완성_409() {
+    Diary diary = givenMyDiary(Diary.create(USER_ID, true));
+
+    assertThatThrownBy(
+            () ->
+                diaryService.recordDownload(
+                    USER_ID, diary.getId(), new DiaryDownloadRequest(DiaryDownloadFormat.PDF, 4)))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.DIARY_NOT_FINISHED);
+    verify(diaryDownloadRepository, never()).save(any());
+  }
+
+  @Test
+  @DisplayName("완성 다이어리의 다운로드를 형식·쪽 수와 함께 기록한다")
+  void recordDownload_완성_기록() {
+    Diary diary = Diary.create(USER_ID, true);
+    diary.finalizeWith(List.of(), Map.of(), 0, NOW);
+    givenMyDiary(diary);
+
+    diaryService.recordDownload(
+        USER_ID, diary.getId(), new DiaryDownloadRequest(DiaryDownloadFormat.JPG, 6));
+
+    ArgumentCaptor<DiaryDownload> captor = ArgumentCaptor.forClass(DiaryDownload.class);
+    verify(diaryDownloadRepository).save(captor.capture());
+    assertThat(captor.getValue().getDiaryId()).isEqualTo(diary.getId());
+    assertThat(captor.getValue().getUserId()).isEqualTo(USER_ID);
+    assertThat(captor.getValue().getFormat()).isEqualTo(DiaryDownloadFormat.JPG);
+    assertThat(captor.getValue().getPageCount()).isEqualTo(6);
   }
 
   @Test
@@ -282,7 +347,7 @@ class DiaryServiceTest {
   @DisplayName("finished-pages 는 fileId 순서대로 key 를 저장하고 편집 데이터를 비운다")
   void saveFinishedPages_정상_키저장및편집데이터비움() {
     Diary diary = Diary.create(USER_ID, true);
-    diary.finalizeWith(List.of(Map.of("a", 1)), Map.of("other", List.of()), NOW);
+    diary.finalizeWith(List.of(Map.of("a", 1)), Map.of("other", List.of()), 0, NOW);
     givenMyDiary(diary);
     UUID first = UUID.randomUUID();
     UUID second = UUID.randomUUID();
@@ -305,7 +370,7 @@ class DiaryServiceTest {
   @DisplayName("이미 완성 페이지가 있으면 기존 key 를 그대로 반환한다")
   void saveFinishedPages_이미있음_기존반환() {
     Diary diary = Diary.create(USER_ID, true);
-    diary.finalizeWith(List.of(), Map.of(), NOW);
+    diary.finalizeWith(List.of(), Map.of(), 0, NOW);
     diary.completePages(List.of("diary/old.jpg"));
     givenMyDiary(diary);
 
@@ -321,7 +386,7 @@ class DiaryServiceTest {
   @DisplayName("남이 올린 파일로 finished-pages 를 등록하면 400")
   void saveFinishedPages_타인파일_400() {
     Diary diary = Diary.create(USER_ID, true);
-    diary.finalizeWith(List.of(), Map.of(), NOW);
+    diary.finalizeWith(List.of(), Map.of(), 0, NOW);
     givenMyDiary(diary);
     UUID fileId = UUID.randomUUID();
     given(fileService.findDetails(List.of(fileId)))
@@ -386,7 +451,7 @@ class DiaryServiceTest {
             [{"templateId": "%s", "left": {"templateId": "%s"}, "right": {"templateId": "not-uuid"}}]
             """
                 .formatted(top, nested));
-    diary.saveSpreads(objectMapper.convertValue(spreads, List.class), Map.of(), NOW);
+    diary.saveSpreads(objectMapper.convertValue(spreads, List.class), Map.of(), 0, NOW);
     givenMyDiary(diary);
     given(diaryAssetService.getInactiveTemplates(Set.of(top, nested))).willReturn(List.of());
 

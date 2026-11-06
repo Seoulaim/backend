@@ -68,6 +68,17 @@ public class Diary extends BaseEntity {
   @Column(name = "deleted_at")
   private Instant deletedAt;
 
+  // 편집 데이터 저장(spreads 저장·완성) 횟수. 환불 심사용 이력
+  @Column(name = "save_count", nullable = false)
+  private int saveCount;
+
+  @Column(name = "last_saved_at")
+  private Instant lastSavedAt;
+
+  // 마지막 저장 시점의 placePhotos 전체 항목 수. 완성 후 placePhotos 를 비워도 유지한다
+  @Column(name = "photo_count", nullable = false)
+  private int photoCount;
+
   public static Diary create(UUID userId, boolean isFree) {
     Diary diary = new Diary();
     diary.userId = userId;
@@ -88,14 +99,22 @@ public class Diary extends BaseEntity {
     this.deletedAt = now;
   }
 
-  public void saveSpreads(List<Object> spreads, Map<String, Object> placePhotos, Instant now) {
+  /**
+   * @param photoCount placePhotos 전체 항목 수 (같은 사진이 여러 장소에 있으면 각각 센다)
+   */
+  public void saveSpreads(
+      List<Object> spreads, Map<String, Object> placePhotos, int photoCount, Instant now) {
     this.spreads = spreads;
     this.placePhotos = placePhotos;
     this.lastEditedAt = now;
+    this.saveCount++;
+    this.lastSavedAt = now;
+    this.photoCount = photoCount;
   }
 
-  public void finalizeWith(List<Object> spreads, Map<String, Object> placePhotos, Instant now) {
-    saveSpreads(spreads, placePhotos, now);
+  public void finalizeWith(
+      List<Object> spreads, Map<String, Object> placePhotos, int photoCount, Instant now) {
+    saveSpreads(spreads, placePhotos, photoCount, now);
     this.status = DiaryStatus.FINALIZED;
     this.completedAt = now;
   }
