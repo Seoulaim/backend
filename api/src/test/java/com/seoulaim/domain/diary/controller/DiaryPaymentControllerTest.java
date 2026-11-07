@@ -11,14 +11,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.seoulaim.domain.diary.dto.DiaryCheckoutResponse;
+import com.seoulaim.domain.diary.dto.DiaryPaymentConfirmRequest;
 import com.seoulaim.domain.diary.dto.DiaryPaymentConfirmResponse;
+import com.seoulaim.domain.diary.dto.DiaryPaymentCreateRequest;
 import com.seoulaim.domain.diary.dto.DiaryPaymentCreateResponse;
 import com.seoulaim.domain.diary.entity.Diary;
+import com.seoulaim.domain.diary.entity.DiaryPaymentMethod;
 import com.seoulaim.domain.diary.service.DiaryPaymentService;
+import com.seoulaim.domain.order.gateway.PaymentCurrency;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
 import com.seoulaim.global.security.SecurityTestConfig;
 import com.seoulaim.global.security.TestAccessTokens;
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -40,12 +46,26 @@ class DiaryPaymentControllerTest {
   @MockitoBean private DiaryPaymentService diaryPaymentService;
 
   @Test
-  @DisplayName("결제 화면은 item, 빈 coupons, TOSS 결제수단을 반환한다")
+  @DisplayName("결제 화면은 item(price·prices), 빈 coupons, CARD·PAYPAL 결제수단(통화·금액)을 반환한다")
   void getCheckout_정상_200반환() throws Exception {
     UUID userId = UUID.randomUUID();
     Diary diary = Diary.create(userId, false);
     given(diaryPaymentService.getCheckout(userId, diary.getId()))
-        .willReturn(DiaryCheckoutResponse.of(diary, 3000L));
+        .willReturn(
+            DiaryCheckoutResponse.of(
+                diary,
+                3000L,
+                List.of(
+                    new DiaryCheckoutResponse.PaymentMethod(
+                        DiaryPaymentMethod.CARD,
+                        "Card",
+                        PaymentCurrency.KRW,
+                        new BigDecimal("3000")),
+                    new DiaryCheckoutResponse.PaymentMethod(
+                        DiaryPaymentMethod.PAYPAL,
+                        "PayPal",
+                        PaymentCurrency.USD,
+                        new BigDecimal("2.99")))));
 
     mockMvc
         .perform(
@@ -55,8 +75,16 @@ class DiaryPaymentControllerTest {
         .andExpect(jsonPath("$.item.diaryId").value(diary.getId().toString()))
         .andExpect(jsonPath("$.item.price").value(3000))
         .andExpect(jsonPath("$.coupons").isEmpty())
-        .andExpect(jsonPath("$.paymentMethods[0].id").value("TOSS"))
-        .andExpect(jsonPath("$.paymentMethods[0].name").value("Card"));
+        .andExpect(jsonPath("$.item.prices.KRW").value(3000))
+        .andExpect(jsonPath("$.item.prices.USD").value(2.99))
+        .andExpect(jsonPath("$.paymentMethods[0].id").value("CARD"))
+        .andExpect(jsonPath("$.paymentMethods[0].name").value("Card"))
+        .andExpect(jsonPath("$.paymentMethods[0].currency").value("KRW"))
+        .andExpect(jsonPath("$.paymentMethods[0].amount").value(3000))
+        .andExpect(jsonPath("$.paymentMethods[1].id").value("PAYPAL"))
+        .andExpect(jsonPath("$.paymentMethods[1].name").value("PayPal"))
+        .andExpect(jsonPath("$.paymentMethods[1].currency").value("USD"))
+        .andExpect(jsonPath("$.paymentMethods[1].amount").value(2.99));
   }
 
   @Test
@@ -68,7 +96,17 @@ class DiaryPaymentControllerTest {
     given(diaryPaymentService.createPayment(eq(userId), eq(diaryId), any()))
         .willReturn(
             new DiaryPaymentCreateResponse(
-                orderId, "DIA-20261103-ABCDE12345", 3000L, "Seoulaim Diary", "test_ck"));
+                orderId,
+                "DIA-20261103-ABCDE12345",
+                new BigDecimal("3000"),
+                "Seoulaim Diary",
+                "test_ck",
+                DiaryPaymentMethod.CARD,
+                PaymentCurrency.KRW,
+                new BigDecimal("3000"),
+                "test_ck",
+                null,
+                userId.toString()));
 
     mockMvc
         .perform(
@@ -81,6 +119,70 @@ class DiaryPaymentControllerTest {
         .andExpect(jsonPath("$.orderNumber").value("DIA-20261103-ABCDE12345"))
         .andExpect(jsonPath("$.finalAmount").value(3000))
         .andExpect(jsonPath("$.orderName").value("Seoulaim Diary"));
+  }
+
+  @Test
+  @DisplayName(
+      "PAYPAL 결제 생성은 method·currency·amount(2.99)·외화 clientKey·variantKey·customerKey 를 반환한다")
+  void createPayment_PAYPAL_201반환() throws Exception {
+    UUID userId = UUID.randomUUID();
+    UUID diaryId = UUID.randomUUID();
+    UUID orderId = UUID.randomUUID();
+    given(
+            diaryPaymentService.createPayment(
+                eq(userId), eq(diaryId), eq(new DiaryPaymentCreateRequest(null, true, "PAYPAL"))))
+        .willReturn(
+            new DiaryPaymentCreateResponse(
+                orderId,
+                "DIA-20261107-ABCDE12345",
+                new BigDecimal("2.99"),
+                "Seoulaim Diary",
+                "test_ck",
+                DiaryPaymentMethod.PAYPAL,
+                PaymentCurrency.USD,
+                new BigDecimal("2.99"),
+                "test_gck",
+                "PAYPAL",
+                userId.toString()));
+
+    mockMvc
+        .perform(
+            post("/api/v1/diaries/{diaryId}/payments", diaryId)
+                .header(HttpHeaders.AUTHORIZATION, tokens.bearer(userId))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"refundConsent\": true, \"method\": \"PAYPAL\"}"))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.method").value("PAYPAL"))
+        .andExpect(jsonPath("$.currency").value("USD"))
+        .andExpect(jsonPath("$.amount").value(2.99))
+        .andExpect(jsonPath("$.finalAmount").value(2.99))
+        .andExpect(jsonPath("$.clientKey").value("test_gck"))
+        .andExpect(jsonPath("$.tossClientKey").value("test_ck"))
+        .andExpect(jsonPath("$.variantKey").value("PAYPAL"))
+        .andExpect(jsonPath("$.customerKey").value(userId.toString()));
+  }
+
+  @Test
+  @DisplayName("승인 요청 amount 는 숫자 2.99 와 문자열 \"2.99\" 모두 BigDecimal 2.99 로 받는다")
+  void confirm_USD금액_숫자문자열_동일() throws Exception {
+    UUID userId = UUID.randomUUID();
+    UUID orderId = UUID.randomUUID();
+    UUID diaryId = UUID.randomUUID();
+    given(
+            diaryPaymentService.confirm(
+                userId, orderId, new DiaryPaymentConfirmRequest("pk_1", new BigDecimal("2.99"))))
+        .willReturn(new DiaryPaymentConfirmResponse(diaryId));
+
+    for (String amount : List.of("2.99", "\"2.99\"")) {
+      mockMvc
+          .perform(
+              post("/api/v1/payments/{orderId}/confirm", orderId)
+                  .header(HttpHeaders.AUTHORIZATION, tokens.bearer(userId))
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content("{\"paymentKey\": \"pk_1\", \"amount\": " + amount + "}"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.diaryId").value(diaryId.toString()));
+    }
   }
 
   @Test

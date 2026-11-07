@@ -10,6 +10,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.seoulaim.domain.diary.dto.DiaryCheckoutResponse;
 import com.seoulaim.domain.diary.dto.DiaryPaymentConfirmRequest;
 import com.seoulaim.domain.diary.dto.DiaryPaymentConfirmResponse;
 import com.seoulaim.domain.diary.dto.DiaryPaymentCreateRequest;
@@ -22,6 +23,7 @@ import com.seoulaim.domain.diary.entity.Diary;
 import com.seoulaim.domain.diary.entity.DiaryDownload;
 import com.seoulaim.domain.diary.entity.DiaryDownloadFormat;
 import com.seoulaim.domain.diary.entity.DiaryPayment;
+import com.seoulaim.domain.diary.entity.DiaryPaymentMethod;
 import com.seoulaim.domain.diary.entity.DiaryPaymentStatus;
 import com.seoulaim.domain.diary.repository.DiaryDownloadRepository;
 import com.seoulaim.domain.diary.repository.DiaryPaymentRepository;
@@ -29,12 +31,16 @@ import com.seoulaim.domain.diary.repository.DiaryRepository;
 import com.seoulaim.domain.diary.repository.UserCount;
 import com.seoulaim.domain.inquiry.service.RefundRequestQueryService;
 import com.seoulaim.domain.order.gateway.PaymentCancelResult;
+import com.seoulaim.domain.order.gateway.PaymentCurrency;
 import com.seoulaim.domain.order.gateway.PaymentGateway;
+import com.seoulaim.domain.order.gateway.PaymentGatewayResolver;
+import com.seoulaim.domain.order.gateway.PaymentMerchant;
 import com.seoulaim.domain.order.gateway.PaymentResult;
 import com.seoulaim.global.config.DiaryProperties;
 import com.seoulaim.global.config.TossPaymentProperties;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -59,13 +65,23 @@ class DiaryPaymentServiceTest {
   private static final Instant NOW = Instant.parse("2026-11-03T03:00:00Z");
   private static final UUID USER_ID = UUID.randomUUID();
   private static final long PRICE = 3000L;
+  private static final BigDecimal KRW_AMOUNT = new BigDecimal("3000");
+  private static final BigDecimal USD_AMOUNT = new BigDecimal("2.99");
+  private static final TossPaymentProperties TOSS_PROPERTIES =
+      new TossPaymentProperties(
+          "test_sk",
+          "test_ck",
+          new TossPaymentProperties.Foreign("test_gck_foreign", "test_gsk_foreign", null));
   private static final String CANCEL_REASON = "고객 요청 환불";
 
   @Mock private DiaryService diaryService;
   @Mock private DiaryRepository diaryRepository;
   @Mock private DiaryPaymentRepository diaryPaymentRepository;
   @Mock private DiaryDownloadRepository diaryDownloadRepository;
+  // 원화 MID
   @Mock private PaymentGateway paymentGateway;
+  // 외화 MID (PayPal)
+  @Mock private PaymentGateway foreignGateway;
   @Mock private RefundRequestQueryService refundRequestQueryService;
 
   private DiaryPaymentService diaryPaymentService;
@@ -73,16 +89,28 @@ class DiaryPaymentServiceTest {
   @BeforeEach
   void setUp() {
     diaryPaymentService =
-        new DiaryPaymentService(
-            diaryService,
-            diaryRepository,
-            diaryPaymentRepository,
-            diaryDownloadRepository,
-            paymentGateway,
-            refundRequestQueryService,
-            new DiaryProperties(PRICE, 2),
-            new TossPaymentProperties("test_sk", "test_ck"),
-            Clock.fixed(NOW, ZoneOffset.UTC));
+        service(new PaymentGatewayResolver(paymentGateway, foreignGateway), TOSS_PROPERTIES);
+  }
+
+  private DiaryPaymentService service(
+      PaymentGatewayResolver resolver, TossPaymentProperties tossProperties) {
+    return new DiaryPaymentService(
+        diaryService,
+        diaryRepository,
+        diaryPaymentRepository,
+        diaryDownloadRepository,
+        resolver,
+        refundRequestQueryService,
+        new DiaryProperties(PRICE, 2, USD_AMOUNT),
+        tossProperties,
+        Clock.fixed(NOW, ZoneOffset.UTC));
+  }
+
+  // 외화 MID 키가 없는 설정
+  private DiaryPaymentService krwOnlyService() {
+    return service(
+        new PaymentGatewayResolver(paymentGateway, null),
+        new TossPaymentProperties("test_sk", "test_ck"));
   }
 
   private Diary givenMyDiary(Diary diary) {
@@ -121,7 +149,7 @@ class DiaryPaymentServiceTest {
     assertThat(created.getRefundConsentAt()).isEqualTo(NOW);
     assertThat(response.orderId()).isEqualTo(created.getId());
     assertThat(response.orderNumber()).matches("DIA-20261103-[A-Z0-9]{10}");
-    assertThat(response.finalAmount()).isEqualTo(PRICE);
+    assertThat(response.finalAmount()).isEqualTo(KRW_AMOUNT);
     assertThat(response.orderName()).isEqualTo("Seoulaim Diary");
     assertThat(response.tossClientKey()).isEqualTo("test_ck");
   }
@@ -178,20 +206,19 @@ class DiaryPaymentServiceTest {
     DiaryPayment payment = givenLockedPayment(diary);
     given(diaryRepository.findById(diary.getId())).willReturn(Optional.of(diary));
     Instant approvedAt = NOW.minusSeconds(5);
-    given(
-            paymentGateway.confirm(
-                "pk_1", payment.getOrderNumber(), java.math.BigDecimal.valueOf(PRICE)))
+    given(paymentGateway.confirm("pk_1", payment.getOrderNumber(), KRW_AMOUNT))
         .willReturn(PaymentResult.success("pk_1", "카드", approvedAt, "{}"));
 
     DiaryPaymentConfirmResponse response =
         diaryPaymentService.confirm(
-            USER_ID, payment.getId(), new DiaryPaymentConfirmRequest("pk_1", PRICE));
+            USER_ID, payment.getId(), new DiaryPaymentConfirmRequest("pk_1", KRW_AMOUNT));
 
     assertThat(response.diaryId()).isEqualTo(diary.getId());
     assertThat(payment.getStatus()).isEqualTo(DiaryPaymentStatus.PAID);
     assertThat(payment.getPaidAt()).isEqualTo(approvedAt);
     assertThat(payment.getTossPaymentKey()).isEqualTo("pk_1");
     assertThat(payment.getMethodDetail()).isEqualTo("카드");
+    assertThat(payment.getMethod()).isEqualTo(DiaryPaymentMethod.CARD);
     assertThat(diary.isPaid()).isTrue();
   }
 
@@ -203,11 +230,12 @@ class DiaryPaymentServiceTest {
     assertThatThrownBy(
             () ->
                 diaryPaymentService.confirm(
-                    USER_ID, payment.getId(), new DiaryPaymentConfirmRequest("pk_1", PRICE - 1)))
+                    USER_ID,
+                    payment.getId(),
+                    new DiaryPaymentConfirmRequest("pk_1", new BigDecimal("2999"))))
         .extracting("errorCode")
         .isEqualTo(ErrorCode.PAYMENT_AMOUNT_MISMATCH);
-    verify(paymentGateway, never())
-        .confirm(anyString(), anyString(), any(java.math.BigDecimal.class));
+    verify(paymentGateway, never()).confirm(anyString(), anyString(), any(BigDecimal.class));
   }
 
   @Test
@@ -215,15 +243,13 @@ class DiaryPaymentServiceTest {
   void confirm_토스실패_402() {
     Diary diary = Diary.create(USER_ID, false);
     DiaryPayment payment = givenLockedPayment(diary);
-    given(
-            paymentGateway.confirm(
-                "pk_1", payment.getOrderNumber(), java.math.BigDecimal.valueOf(PRICE)))
+    given(paymentGateway.confirm("pk_1", payment.getOrderNumber(), KRW_AMOUNT))
         .willReturn(PaymentResult.failure("REJECT_CARD_COMPANY", "카드사 거절", "{}"));
 
     assertThatThrownBy(
             () ->
                 diaryPaymentService.confirm(
-                    USER_ID, payment.getId(), new DiaryPaymentConfirmRequest("pk_1", PRICE)))
+                    USER_ID, payment.getId(), new DiaryPaymentConfirmRequest("pk_1", KRW_AMOUNT)))
         .isInstanceOf(BusinessException.class)
         .satisfies(
             exception -> {
@@ -245,11 +271,10 @@ class DiaryPaymentServiceTest {
 
     DiaryPaymentConfirmResponse response =
         diaryPaymentService.confirm(
-            USER_ID, payment.getId(), new DiaryPaymentConfirmRequest("pk_1", PRICE));
+            USER_ID, payment.getId(), new DiaryPaymentConfirmRequest("pk_1", KRW_AMOUNT));
 
     assertThat(response.diaryId()).isEqualTo(diary.getId());
-    verify(paymentGateway, never())
-        .confirm(anyString(), anyString(), any(java.math.BigDecimal.class));
+    verify(paymentGateway, never()).confirm(anyString(), anyString(), any(BigDecimal.class));
   }
 
   @Test
@@ -575,6 +600,206 @@ class DiaryPaymentServiceTest {
         return count;
       }
     };
+  }
+
+  // ---- PayPal(외화 MID) #59 ----
+
+  @Test
+  @DisplayName("결제 화면: 외화 키가 있으면 CARD(KRW 3000)·PAYPAL(USD 2.99) 순서로 내리고 item.prices 에 통화별 가격")
+  void getCheckout_외화키있음_PAYPAL포함() {
+    Diary diary = givenMyDiary(Diary.create(USER_ID, false));
+
+    DiaryCheckoutResponse response = diaryPaymentService.getCheckout(USER_ID, diary.getId());
+
+    assertThat(response.item().price()).isEqualTo(PRICE);
+    assertThat(response.item().prices())
+        .containsExactly(
+            Map.entry(PaymentCurrency.KRW, KRW_AMOUNT), Map.entry(PaymentCurrency.USD, USD_AMOUNT));
+    assertThat(response.paymentMethods())
+        .containsExactly(
+            new DiaryCheckoutResponse.PaymentMethod(
+                DiaryPaymentMethod.CARD, "Card", PaymentCurrency.KRW, KRW_AMOUNT),
+            new DiaryCheckoutResponse.PaymentMethod(
+                DiaryPaymentMethod.PAYPAL, "PayPal", PaymentCurrency.USD, USD_AMOUNT));
+  }
+
+  @Test
+  @DisplayName("결제 화면: 외화 키가 없으면 PAYPAL 과 USD 가격을 숨긴다")
+  void getCheckout_외화키없음_PAYPAL숨김() {
+    Diary diary = givenMyDiary(Diary.create(USER_ID, false));
+
+    DiaryCheckoutResponse response = krwOnlyService().getCheckout(USER_ID, diary.getId());
+
+    assertThat(response.paymentMethods())
+        .extracting(DiaryCheckoutResponse.PaymentMethod::id)
+        .containsExactly(DiaryPaymentMethod.CARD);
+    assertThat(response.item().prices()).containsOnlyKeys(PaymentCurrency.KRW);
+  }
+
+  @Test
+  @DisplayName("결제 생성 CARD(기본값): 원화 MID 키, variantKey null, KRW 3000, customerKey=회원 id")
+  void createPayment_CARD_원화MID응답() {
+    Diary diary = givenMyDiary(Diary.create(USER_ID, false));
+    given(diaryPaymentRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
+
+    DiaryPaymentCreateResponse response =
+        diaryPaymentService.createPayment(
+            USER_ID, diary.getId(), new DiaryPaymentCreateRequest(null, true, null));
+
+    assertThat(response.method()).isEqualTo(DiaryPaymentMethod.CARD);
+    assertThat(response.currency()).isEqualTo(PaymentCurrency.KRW);
+    assertThat(response.amount()).isEqualTo(KRW_AMOUNT);
+    assertThat(response.finalAmount()).isEqualTo(KRW_AMOUNT);
+    assertThat(response.clientKey()).isEqualTo("test_ck");
+    assertThat(response.tossClientKey()).isEqualTo("test_ck");
+    assertThat(response.variantKey()).isNull();
+    assertThat(response.customerKey())
+        .isEqualTo(USER_ID.toString())
+        .hasSizeBetween(22, 50)
+        .contains("-")
+        .matches("[A-Za-z0-9\\-_=.@]+");
+  }
+
+  @Test
+  @DisplayName(
+      "결제 생성 PAYPAL(소문자도 허용): 외화 MID 키, variantKey PAYPAL, USD 2.99, tossClientKey 는 원화 키 유지")
+  void createPayment_PAYPAL_외화MID응답() {
+    Diary diary = givenMyDiary(Diary.create(USER_ID, false));
+    given(diaryPaymentRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
+
+    DiaryPaymentCreateResponse response =
+        diaryPaymentService.createPayment(
+            USER_ID, diary.getId(), new DiaryPaymentCreateRequest(null, true, "paypal"));
+
+    assertThat(response.method()).isEqualTo(DiaryPaymentMethod.PAYPAL);
+    assertThat(response.currency()).isEqualTo(PaymentCurrency.USD);
+    assertThat(response.amount()).isEqualTo(USD_AMOUNT);
+    assertThat(response.finalAmount()).isEqualTo(USD_AMOUNT);
+    assertThat(response.clientKey()).isEqualTo("test_gck_foreign");
+    assertThat(response.tossClientKey()).isEqualTo("test_ck");
+    assertThat(response.variantKey()).isEqualTo("PAYPAL");
+    assertThat(response.customerKey()).isEqualTo(USER_ID.toString());
+    ArgumentCaptor<DiaryPayment> captor = ArgumentCaptor.forClass(DiaryPayment.class);
+    verify(diaryPaymentRepository).save(captor.capture());
+    DiaryPayment created = captor.getValue();
+    assertThat(created.getMethod()).isEqualTo(DiaryPaymentMethod.PAYPAL);
+    assertThat(created.getMerchant()).isEqualTo(PaymentMerchant.FOREIGN);
+    assertThat(created.getCurrency()).isEqualTo(PaymentCurrency.USD);
+    assertThat(created.getAmount()).isEqualTo(USD_AMOUNT);
+  }
+
+  @Test
+  @DisplayName("결제 생성: 외화 키가 없는데 PAYPAL 이면 400 PAYMENT_METHOD_UNAVAILABLE")
+  void createPayment_외화키없음_PAYPAL_400() {
+    Diary diary = givenMyDiary(Diary.create(USER_ID, false));
+
+    assertThatThrownBy(
+            () ->
+                krwOnlyService()
+                    .createPayment(
+                        USER_ID,
+                        diary.getId(),
+                        new DiaryPaymentCreateRequest(null, true, "PAYPAL")))
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.PAYMENT_METHOD_UNAVAILABLE);
+    verify(diaryPaymentRepository, never()).save(any());
+  }
+
+  @Test
+  @DisplayName("결제 생성: 모르는 결제수단이면 400 PAYMENT_INVALID_METHOD")
+  void createPayment_모르는수단_400() {
+    Diary diary = givenMyDiary(Diary.create(USER_ID, false));
+
+    assertThatThrownBy(
+            () ->
+                diaryPaymentService.createPayment(
+                    USER_ID, diary.getId(), new DiaryPaymentCreateRequest(null, true, "TOSS")))
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.PAYMENT_INVALID_METHOD);
+    verify(diaryPaymentRepository, never()).save(any());
+  }
+
+  private DiaryPayment givenLockedPaypalPayment(Diary diary) {
+    DiaryPayment payment =
+        DiaryPayment.createPending(
+            diary.getId(),
+            USER_ID,
+            "DIA-20261107-PAYPAL0001",
+            DiaryPaymentMethod.PAYPAL,
+            USD_AMOUNT,
+            NOW);
+    given(diaryPaymentRepository.findWithLockByIdAndUserId(payment.getId(), USER_ID))
+        .willReturn(Optional.of(payment));
+    return payment;
+  }
+
+  @Test
+  @DisplayName("승인: PAYPAL 결제는 외화 MID 게이트웨이로 USD 금액을 보내고 easyPay 를 method_detail 에 저장한다")
+  void confirm_PAYPAL_외화게이트웨이() {
+    Diary diary = Diary.create(USER_ID, false);
+    DiaryPayment payment = givenLockedPaypalPayment(diary);
+    given(diaryRepository.findById(diary.getId())).willReturn(Optional.of(diary));
+    given(foreignGateway.confirm("pk_pp", payment.getOrderNumber(), USD_AMOUNT))
+        .willReturn(PaymentResult.success("pk_pp", "해외간편결제", "PAYPAL", NOW, "{}"));
+
+    diaryPaymentService.confirm(
+        USER_ID, payment.getId(), new DiaryPaymentConfirmRequest("pk_pp", new BigDecimal("2.99")));
+
+    assertThat(payment.getStatus()).isEqualTo(DiaryPaymentStatus.PAID);
+    assertThat(payment.getMethodDetail()).isEqualTo("해외간편결제(PAYPAL)");
+    assertThat(diary.isPaid()).isTrue();
+    verify(paymentGateway, never()).confirm(anyString(), anyString(), any(BigDecimal.class));
+  }
+
+  @Test
+  @DisplayName("승인: CARD 결제는 원화 MID 게이트웨이로 보낸다")
+  void confirm_CARD_원화게이트웨이() {
+    Diary diary = Diary.create(USER_ID, false);
+    DiaryPayment payment = givenLockedPayment(diary);
+    given(diaryRepository.findById(diary.getId())).willReturn(Optional.of(diary));
+    given(paymentGateway.confirm("pk_1", payment.getOrderNumber(), KRW_AMOUNT))
+        .willReturn(PaymentResult.success("pk_1", "카드", NOW, "{}"));
+
+    diaryPaymentService.confirm(
+        USER_ID,
+        payment.getId(),
+        new DiaryPaymentConfirmRequest("pk_1", new BigDecimal("3000.00")));
+
+    assertThat(payment.getStatus()).isEqualTo(DiaryPaymentStatus.PAID);
+    verify(foreignGateway, never()).confirm(anyString(), anyString(), any(BigDecimal.class));
+  }
+
+  @Test
+  @DisplayName("승인 금액 비교: USD 2.99 는 2.99·2.990 과 같고 2.98·2.999·3 과는 다르다")
+  void confirm_USD금액비교_소수점포함() {
+    Diary diary = Diary.create(USER_ID, false);
+    DiaryPayment payment = givenLockedPaypalPayment(diary);
+
+    for (String amount : List.of("2.98", "2.999", "3", "299")) {
+      assertThatThrownBy(
+              () ->
+                  diaryPaymentService.confirm(
+                      USER_ID,
+                      payment.getId(),
+                      new DiaryPaymentConfirmRequest("pk_pp", new BigDecimal(amount))))
+          .as(amount)
+          .extracting("errorCode")
+          .isEqualTo(ErrorCode.PAYMENT_AMOUNT_MISMATCH);
+    }
+    verify(foreignGateway, never()).confirm(anyString(), anyString(), any(BigDecimal.class));
+
+    payment.markPaid("pk_pp", NOW);
+    for (String amount : List.of("2.99", "2.990")) {
+      assertThat(
+              diaryPaymentService
+                  .confirm(
+                      USER_ID,
+                      payment.getId(),
+                      new DiaryPaymentConfirmRequest("pk_pp", new BigDecimal(amount)))
+                  .diaryId())
+          .as(amount)
+          .isEqualTo(diary.getId());
+    }
   }
 
   private DiaryPayment givenLockedPaidPayment(Diary diary) {
