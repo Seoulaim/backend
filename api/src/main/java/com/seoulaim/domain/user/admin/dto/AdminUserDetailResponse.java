@@ -59,6 +59,9 @@ public record AdminUserDetailResponse(
       boolean deleted) {}
 
   /**
+   * @param amount 결제 통화 단위 금액 (KRW 3000, USD 2.99)
+   * @param method CARD | PAYPAL
+   * @param currency KRW | USD
    * @param status 소문자 (paid | refunded)
    */
   public record Payment(
@@ -66,6 +69,8 @@ public record AdminUserDetailResponse(
       String orderNumber,
       UUID diaryId,
       BigDecimal amount,
+      String method,
+      String currency,
       String status,
       Instant paidAt,
       Instant refundedAt) {}

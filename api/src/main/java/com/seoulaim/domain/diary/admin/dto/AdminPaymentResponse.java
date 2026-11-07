@@ -1,5 +1,7 @@
 package com.seoulaim.domain.diary.admin.dto;
 
+import com.seoulaim.domain.diary.entity.DiaryPaymentMethod;
+import com.seoulaim.domain.order.gateway.PaymentCurrency;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
@@ -10,12 +12,15 @@ import java.util.UUID;
  * @param orderId 토스 orderId (= diary_payments.order_number). 토스 콘솔과 대조할 때 쓴다
  * @param member 결제한 회원. 탈퇴 회원은 email null
  * @param diary 다이어리를 찾을 수 없으면 null
+ * @param amount 결제 통화 단위 금액 (KRW 3000, USD 2.99)
+ * @param currency KRW | USD
  * @param provider "toss"
  * @param status 소문자 (pending | paid | failed | refunded)
  * @param editedAt 결제 후 첫 편집 시각 (환불 정책 판단용)
  * @param refundRequested 처리 대기(requested) 환불 요청이 있음
  * @param refundRequestId 가장 최근 환불 요청(문의) id. 없으면 null
- * @param method 토스 승인 응답의 결제수단. 저장 전 결제(#57 이전)나 미승인 결제는 null
+ * @param method 회원이 고른 결제수단 CARD | PAYPAL (#59 이전 결제는 CARD)
+ * @param methodDetail 토스 승인 응답의 결제수단 (예: 카드, 해외간편결제(PAYPAL)). #57 이전 결제나 미승인 결제는 null
  * @param sameDiaryPayments 이 결제가 paid 일 때 같은 다이어리의 다른 paid 결제 수 (1 이상이면 중복 결제 의심)
  */
 public record AdminPaymentResponse(
@@ -24,6 +29,7 @@ public record AdminPaymentResponse(
     Member member,
     Diary diary,
     BigDecimal amount,
+    PaymentCurrency currency,
     String provider,
     String status,
     Instant createdAt,
@@ -33,7 +39,8 @@ public record AdminPaymentResponse(
     Instant editedAt,
     boolean refundRequested,
     UUID refundRequestId,
-    String method,
+    DiaryPaymentMethod method,
+    String methodDetail,
     int sameDiaryPayments) {
 
   public record Member(UUID id, String nickname, String email) {}

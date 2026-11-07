@@ -13,15 +13,18 @@ import com.seoulaim.domain.diary.repository.DiaryPaymentRepository;
 import com.seoulaim.domain.diary.repository.DiaryRepository;
 import com.seoulaim.domain.inquiry.dto.PaymentRefundRequest;
 import com.seoulaim.domain.inquiry.service.RefundRequestQueryService;
+import com.seoulaim.domain.order.gateway.PaymentCurrency;
 import com.seoulaim.domain.user.dto.UserAccountInfo;
 import com.seoulaim.domain.user.service.UserService;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
 import com.seoulaim.global.util.AdminPaging;
 import com.seoulaim.global.util.LikePattern;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Arrays;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -158,6 +161,7 @@ public class AdminPaymentService {
                 diary.getCompletedAt(),
                 diary.isDeleted()),
         payment.getAmount(),
+        payment.getCurrency(),
         PROVIDER,
         apiStatus(payment.getStatus()),
         payment.getCreatedAt(),
@@ -167,21 +171,43 @@ public class AdminPaymentService {
         payment.getEditedAt(),
         refundRequest != null && refundRequest.requested(),
         refundRequest == null ? null : refundRequest.inquiryId(),
+        payment.getMethod(),
         payment.getMethodDetail(),
         sameDiaryPayments);
   }
 
   private AdminPaymentPageResponse.Summary summary(Filter filter) {
-    Map<DiaryPaymentStatus, StatusTotal> totals =
-        adminPaymentQueryRepository.totalsByStatus(filter).stream()
-            .collect(Collectors.toMap(StatusTotal::status, Function.identity()));
-    StatusTotal paid = totals.get(DiaryPaymentStatus.PAID);
-    StatusTotal refunded = totals.get(DiaryPaymentStatus.REFUNDED);
+    List<StatusTotal> totals = adminPaymentQueryRepository.totalsByStatus(filter);
+    Map<PaymentCurrency, BigDecimal> paidAmounts = amountsOf(totals, DiaryPaymentStatus.PAID);
+    Map<PaymentCurrency, BigDecimal> refundedAmounts =
+        amountsOf(totals, DiaryPaymentStatus.REFUNDED);
     return new AdminPaymentPageResponse.Summary(
-        paid == null ? 0 : paid.count(),
-        paid == null ? 0 : paid.amount(),
-        refunded == null ? 0 : refunded.count(),
-        refunded == null ? 0 : refunded.amount());
+        countOf(totals, DiaryPaymentStatus.PAID),
+        krwAmount(paidAmounts),
+        countOf(totals, DiaryPaymentStatus.REFUNDED),
+        krwAmount(refundedAmounts),
+        paidAmounts,
+        refundedAmounts);
+  }
+
+  private static long countOf(List<StatusTotal> totals, DiaryPaymentStatus status) {
+    return totals.stream()
+        .filter(total -> total.status() == status)
+        .mapToLong(StatusTotal::count)
+        .sum();
+  }
+
+  private static Map<PaymentCurrency, BigDecimal> amountsOf(
+      List<StatusTotal> totals, DiaryPaymentStatus status) {
+    Map<PaymentCurrency, BigDecimal> amounts = new EnumMap<>(PaymentCurrency.class);
+    totals.stream()
+        .filter(total -> total.status() == status)
+        .forEach(total -> amounts.merge(total.currency(), total.amount(), BigDecimal::add));
+    return amounts;
+  }
+
+  private static long krwAmount(Map<PaymentCurrency, BigDecimal> amounts) {
+    return amounts.getOrDefault(PaymentCurrency.KRW, BigDecimal.ZERO).longValueExact();
   }
 
   static String apiStatus(DiaryPaymentStatus status) {

@@ -1,6 +1,8 @@
 package com.seoulaim.domain.inquiry.service;
 
 import java.math.BigDecimal;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
 import java.util.Locale;
 import java.util.Map;
 
@@ -78,18 +80,20 @@ final class RefundMails {
   private RefundMails() {}
 
   static Mail approved(
-      String language, String title, String orderNumber, BigDecimal amount, boolean firstDiary) {
+      String language,
+      String title,
+      String orderNumber,
+      String currency,
+      BigDecimal amount,
+      boolean firstDiary) {
     Texts texts = texts(language);
     String text =
         String.join(
             "\n\n",
             texts.approved(),
-            "- %s: %s\n- %s: KRW %s"
+            "- %s: %s\n- %s: %s %s"
                 .formatted(
-                    texts.orderLabel(),
-                    orderNumber,
-                    texts.amountLabel(),
-                    String.format(Locale.ROOT, "%,d", amount.longValueExact())),
+                    texts.orderLabel(), orderNumber, texts.amountLabel(), currency, format(amount)),
             firstDiary ? texts.firstDiary() : texts.otherDiary(),
             texts.cardNotice(),
             SIGNATURE);
@@ -106,6 +110,15 @@ final class RefundMails {
             texts.contact(),
             SIGNATURE);
     return new Mail(subject(title), text);
+  }
+
+  // 3000 → "3,000", 2.99 → "2.99" (금액은 통화 소수 자릿수로 맞춰져 온다)
+  static String format(BigDecimal amount) {
+    DecimalFormat format =
+        new DecimalFormat("#,##0", DecimalFormatSymbols.getInstance(Locale.ROOT));
+    format.setMinimumFractionDigits(Math.max(amount.scale(), 0));
+    format.setMaximumFractionDigits(Math.max(amount.scale(), 0));
+    return format.format(amount);
   }
 
   private static String subject(String title) {

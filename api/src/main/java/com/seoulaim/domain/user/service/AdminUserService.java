@@ -119,6 +119,8 @@ public class AdminUserService {
                         payment.orderNumber(),
                         payment.diaryId(),
                         payment.amount(),
+                        payment.method().name(),
+                        payment.currency().name(),
                         payment.status(),
                         payment.paidAt(),
                         payment.refundedAt()))

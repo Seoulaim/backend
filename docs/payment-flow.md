@@ -115,8 +115,8 @@ iOS                                API 서버                          토스
 웹앱                                         API 서버                              토스
  │ 1. GET /api/v1/diaries/{id}/checkout ──────▶ 결제 화면 정보
  │ 2. POST /api/v1/diaries/{id}/payments ─────▶ diary_payments PENDING 생성 (기존 PENDING 은 FAILED)
- │ ◀──── { orderId, orderNumber, finalAmount, orderName, tossClientKey }
- │ 3. 토스 결제창 SDK 호출 ─────────────────────────────────────────────────────▶ 인증
+ │ ◀──── { orderId, orderNumber, method, currency, amount, clientKey, variantKey, customerKey, ... }
+ │ 3. 토스 SDK 호출 (CARD: 결제창 / PAYPAL: 결제위젯 v2) ─────────────────────────────────────────────────────▶ 인증
  │ ◀──────────────────── 성공 콜백 { paymentKey, orderId(=orderNumber), amount }
  │ 4. POST /api/v1/payments/{orderId}/confirm ─▶ 승인 API 호출 ──────────────────▶ 승인
  │ ◀──── 200 { diaryId }  또는  402 PAYMENT_FAILED
@@ -128,13 +128,25 @@ iOS                                API 서버                          토스
 
 ```json
 {
-  "item": { "diaryId": "019a4c10-...", "name": "My Diary", "thumbnailKey": null, "price": 3000 },
+  "item": {
+    "diaryId": "019a4c10-...",
+    "name": "My Diary",
+    "thumbnailKey": null,
+    "price": 3000,
+    "prices": { "KRW": 3000, "USD": 2.99 }
+  },
   "coupons": [],
-  "paymentMethods": [{ "id": "TOSS", "name": "Card" }]
+  "paymentMethods": [
+    { "id": "CARD", "name": "Card", "currency": "KRW", "amount": 3000 },
+    { "id": "PAYPAL", "name": "PayPal", "currency": "USD", "amount": 2.99 }
+  ]
 }
 ```
 
 - 쿠폰은 미구현이라 항상 `[]`
+- `item.price` 는 원화 가격 (하위 호환). 통화별 가격은 `item.prices`
+- 외화 MID 키가 설정되지 않은 서버에서는 `PAYPAL` 항목과 `prices.USD` 가 빠진다 (7절)
+- #59 전에는 결제수단 id 가 `TOSS` 였다. 이제 `CARD` | `PAYPAL`
 - 이미 결제된 다이어리면 409 `PAYMENT_ALREADY_PAID`
 
 ## 2. 결제 생성
@@ -142,10 +154,12 @@ iOS                                API 서버                          토스
 `POST /api/v1/diaries/{diaryId}/payments`
 
 ```json
-{ "couponId": null, "refundConsent": true }
+{ "couponId": null, "refundConsent": true, "method": "CARD" }
 ```
 
-응답 201
+`method` 는 `CARD` | `PAYPAL` (대소문자 무시). 생략하면 `CARD`.
+
+응답 201 (CARD)
 
 ```json
 {
@@ -153,27 +167,66 @@ iOS                                API 서버                          토스
   "orderNumber": "DIA-20261103-K3M9Q2X7PA",
   "finalAmount": 3000,
   "orderName": "Seoulaim Diary",
-  "tossClientKey": "test_ck_..."
+  "tossClientKey": "test_ck_...",
+  "method": "CARD",
+  "currency": "KRW",
+  "amount": 3000,
+  "clientKey": "test_ck_...",
+  "variantKey": null,
+  "customerKey": "019a1b2c-3d4e-7f00-8a9b-0c1d2e3f4a5b"
 }
 ```
+
+응답 201 (PAYPAL)
+
+```json
+{
+  "orderId": "019a4c31-...",
+  "orderNumber": "DIA-20261107-P7Q2W9E4RT",
+  "finalAmount": 2.99,
+  "orderName": "Seoulaim Diary",
+  "tossClientKey": "test_ck_...",
+  "method": "PAYPAL",
+  "currency": "USD",
+  "amount": 2.99,
+  "clientKey": "test_gck_...",
+  "variantKey": "PAYPAL",
+  "customerKey": "019a1b2c-3d4e-7f00-8a9b-0c1d2e3f4a5b"
+}
+```
+
+| 필드 | 의미 |
+|---|---|
+| `amount`, `finalAmount` | 결제 통화 단위 금액 (KRW 3000, USD 2.99). 둘은 같은 값 |
+| `clientKey` | 결제수단의 상점(MID) 클라이언트 키. CARD 는 원화 MID, PAYPAL 은 외화 MID 결제위젯 키(`*_gck_`) |
+| `tossClientKey` | 하위 호환. 결제수단과 관계없이 **원화 MID** 키. 새 코드는 `clientKey` 를 쓴다 |
+| `variantKey` | 결제위젯 UI variantKey. PAYPAL 만 (`TOSS_PAYPAL_VARIANT_KEY`, 기본 `PAYPAL`) |
+| `customerKey` | 토스 customerKey (= 회원 id UUID 문자열, 36자) |
 
 | 오류 코드 | 상태 | 조건 |
 |---|---|---|
 | `PAYMENT_CONSENT_REQUIRED` | 400 | `refundConsent` 가 `true` 가 아님 (동의 시각을 `refund_consent_at` 에 저장) |
 | `PAYMENT_ALREADY_PAID` | 409 | 이미 결제된 다이어리 |
+| `PAYMENT_INVALID_METHOD` | 400 | `method` 가 `CARD`·`PAYPAL` 이 아님 |
+| `PAYMENT_METHOD_UNAVAILABLE` | 400 | 외화 MID 키가 없는 서버에서 `PAYPAL` |
 | `DIARY_NOT_FOUND` | 404 | 없음·남의 것·삭제됨 |
 
 - `couponId` 는 받기만 하고 무시한다
 - 같은 다이어리에 결제를 다시 만들면 이전 `PENDING` 결제는 `FAILED`(`failure_code=SUPERSEDED`) 로 바뀐다. 이전 결제로는 승인할 수 없다
 
-## 3. 토스 결제창 호출
+## 3. 토스 SDK 호출
+
+CARD (원화 결제창):
 
 | SDK 파라미터 | 값 |
 |---|---|
-| clientKey | `tossClientKey` |
+| clientKey | `clientKey` (= `tossClientKey`) |
+| customerKey | `customerKey` |
 | orderId | **`orderNumber`** (UUID `orderId` 가 아님) |
-| amount | `finalAmount` |
+| amount | `{ currency: "KRW", value: amount }` |
 | orderName | `orderName` (`Seoulaim Diary`) |
+
+PAYPAL 은 결제위젯 v2 로 띄운다 (7절).
 
 ## 4. 결제 승인
 
@@ -184,6 +237,10 @@ iOS                                API 서버                          토스
 ```json
 { "paymentKey": "tgen_20261103...", "amount": 3000 }
 ```
+
+- `amount` 는 토스 성공 리다이렉트의 `amount` 를 그대로 보낸다. 숫자(`2.99`)·숫자 문자열(`"2.99"`) 모두 받는다
+- 서버는 결제 통화의 소수 자릿수까지 비교한다 (USD: `2.99` = `2.990`, `2.999`·`3` 은 불일치. KRW: `3000` = `3000.00`)
+- 승인은 결제를 만들 때 정해진 상점(MID)의 시크릿 키로 보낸다. 토스 응답의 결제수단(`method`, `easyPay.provider`)은 `method_detail` 에 `해외간편결제(PAYPAL)` 처럼 저장한다
 
 | 응답 | 의미 | 웹앱 처리 |
 |---|---|---|
@@ -207,6 +264,8 @@ iOS                                API 서버                          토스
     "name": "My Diary",
     "thumbnailKey": null,
     "amount": 3000,
+    "method": "CARD",
+    "currency": "KRW",
     "status": "PAID",
     "paidAt": "2026-11-03T03:05:00Z",
     "refundable": true,
@@ -219,6 +278,7 @@ iOS                                API 서버                          토스
 | 필드 | 의미 |
 |---|---|
 | `name`, `thumbnailKey` | 다이어리가 삭제됐으면 `null` |
+| `amount`, `method`, `currency` | 결제 통화 단위 금액 (PayPal 이면 `2.99`, `"PAYPAL"`, `"USD"`) |
 | `refundable` | `PAID` 이고 결제 후 7일 이내이며 다이어리가 아직 완성(FINALIZED) 전이고, 처리 대기 중인 환불 요청이 없음 |
 | `withinPolicy` | `refundable` 이고 결제 후 편집 이력(`POST /diaries/{id}/edited`)이 없음 |
 | `refundRequested` | 처리 대기(REQUESTED) 중인 환불 문의가 있음 |
@@ -226,3 +286,53 @@ iOS                                API 서버                          토스
 ## 6. 환불
 
 환불은 Help Center 의 환불 문의(`POST /inquiries`, `category: "refund"`, `paymentId`)로만 신청하고, 어드민이 승인하면 서버가 토스 결제를 취소한다. 흐름·API 는 [inquiry-flow.md](inquiry-flow.md) 참고.
+
+취소는 결제한 상점(MID)으로 보내고 전액 취소만 한다. **PayPal 결제는 취소해도 토스 수수료가 돌려받아지지 않는다** (외화 MID 정산 조건).
+
+## 7. PayPal (외화 MID) — #59
+
+### 두 MID
+
+토스페이먼츠는 MID(상점) 하나가 통화 하나만 받는다. 그래서 원화 카드와 PayPal(USD)을 **MID 두 개**로 운영한다.
+
+| 결제수단 | 상점(`merchant`) | 통화 | 프론트 SDK | 서버 키 |
+|---|---|---|---|---|
+| `CARD` | `KRW` (기존 MID) | KRW | 결제창 | `TOSS_CLIENT_KEY` / `TOSS_SECRET_KEY` |
+| `PAYPAL` | `FOREIGN` (외화 MID) | USD | 결제위젯 v2 | `TOSS_FOREIGN_CLIENT_KEY` / `TOSS_FOREIGN_SECRET_KEY` |
+
+- 결제 행(`diary_payments`)에 `method`·`merchant`·`currency` 가 저장되고, 승인·취소는 그 행의 `merchant` 키로 보낸다. 승인·취소 API 경로(`/v1/payments/confirm`, `/v1/payments/{paymentKey}/cancel`)는 두 MID 가 같다
+- 금액은 `numeric(12,2)` 통화 단위 (KRW `3000.00`, USD `2.99`). API 는 통화 소수 자릿수로 맞춰 내려준다 (KRW `3000`, USD `2.99`)
+
+### 환경변수
+
+| 이름 | 기본값 | 의미 |
+|---|---|---|
+| `TOSS_FOREIGN_CLIENT_KEY` | (빈 값) | 외화 MID 결제위젯 클라이언트 키 `*_gck_` |
+| `TOSS_FOREIGN_SECRET_KEY` | (빈 값) | 외화 MID 결제위젯 시크릿 키 `*_gsk_` |
+| `TOSS_PAYPAL_VARIANT_KEY` | `PAYPAL` | 결제위젯 PayPal UI 의 variantKey (상점관리자에서 만든 값) |
+| `DIARY_PRICE_USD` | `2.99` | PayPal 결제 금액 (달러, 소수 2자리까지) |
+
+외화 키 둘 중 하나라도 비어 있으면 PayPal 을 끈다: 체크아웃의 `paymentMethods`·`prices` 에서 빠지고, `method: "PAYPAL"` 결제 생성은 `400 PAYMENT_METHOD_UNAVAILABLE`. 이미 만들어진 PayPal 결제를 키 없이 승인하면 같은 400, 환불 승인은 `502 PAYMENT_REFUND_FAILED`(`fields.code: "MERCHANT_UNAVAILABLE"`).
+
+### 결제위젯 v2 흐름 (웹앱)
+
+```
+1. POST /api/v1/diaries/{id}/payments { refundConsent: true, method: "PAYPAL" }
+   → { orderId, orderNumber, amount: 2.99, currency: "USD", clientKey: "..._gck_...", variantKey: "PAYPAL", customerKey }
+2. const tossPayments = TossPayments(clientKey)          // https://js.tosspayments.com/v2/standard
+   const widgets = tossPayments.widgets({ customerKey })
+   await widgets.setAmount({ currency: "USD", value: amount })
+   await widgets.renderPaymentMethods({ selector: "#payment-method", variantKey })
+   await widgets.requestPayment({
+     orderId: orderNumber, orderName,
+     successUrl: `${origin}/payment/success?orderId=${orderId}`,
+     failUrl: `${origin}/payment/fail?orderId=${orderId}`,
+   })
+3. 성공 리다이렉트 ?paymentKey=...&orderId=<orderNumber>&amount=2.99
+   → POST /api/v1/payments/{orderId(UUID)}/confirm { paymentKey, amount: "2.99" }
+```
+
+- 위젯 `orderId` 도 UUID 가 아니라 **`orderNumber`**
+- 결제위젯 키(`*_gck_`)는 결제창 SDK(`payment()`)에 쓸 수 없고, 원화 키는 위젯에 쓸 수 없다. 수단별 `clientKey` 를 그대로 쓴다
+- `variantKey` 는 토스 상점관리자의 결제 UI 설정과 같아야 한다
+

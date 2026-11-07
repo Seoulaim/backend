@@ -8,18 +8,22 @@ import com.seoulaim.domain.diary.admin.dto.AdminPaymentPageResponse;
 import com.seoulaim.domain.diary.admin.dto.AdminPaymentResponse;
 import com.seoulaim.domain.diary.entity.Diary;
 import com.seoulaim.domain.diary.entity.DiaryPayment;
+import com.seoulaim.domain.diary.entity.DiaryPaymentMethod;
 import com.seoulaim.domain.diary.repository.DiaryPaymentRepository;
 import com.seoulaim.domain.diary.repository.DiaryRepository;
 import com.seoulaim.domain.diary.service.AdminPaymentService;
 import com.seoulaim.domain.inquiry.entity.Inquiry;
 import com.seoulaim.domain.inquiry.repository.InquiryRepository;
+import com.seoulaim.domain.order.gateway.PaymentCurrency;
 import com.seoulaim.domain.user.entity.User;
 import com.seoulaim.domain.user.repository.UserRepository;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -120,18 +124,63 @@ class AdminPaymentIntegrationTest {
         .containsExactly(
             jinPending.getId(), jinRefunded.getId(), minaDuplicate.getId(), minaPaid.getId());
     assertThat(page.totalElements()).isEqualTo(4);
-    assertThat(page.summary()).isEqualTo(new AdminPaymentPageResponse.Summary(2, 6000, 1, 3000));
+    assertThat(page.summary())
+        .isEqualTo(
+            new AdminPaymentPageResponse.Summary(
+                2,
+                6000,
+                1,
+                3000,
+                Map.of(PaymentCurrency.KRW, new BigDecimal("6000")),
+                Map.of(PaymentCurrency.KRW, new BigDecimal("3000"))));
     AdminPaymentResponse duplicate = page.items().get(2);
     assertThat(duplicate.orderId()).isEqualTo("DIA-20261101-MINA000002");
     assertThat(duplicate.member().email()).isEqualTo("mina_choi@example.com");
     assertThat(duplicate.status()).isEqualTo("paid");
-    assertThat(duplicate.method()).isEqualTo("간편결제");
+    assertThat(duplicate.method()).isEqualTo(DiaryPaymentMethod.CARD);
+    assertThat(duplicate.methodDetail()).isEqualTo("간편결제");
+    assertThat(duplicate.currency()).isEqualTo(PaymentCurrency.KRW);
+    assertThat(duplicate.amount()).isEqualTo(new BigDecimal("3000"));
     assertThat(duplicate.sameDiaryPayments()).isEqualTo(1);
     AdminPaymentResponse refunded = page.items().get(1);
     assertThat(refunded.status()).isEqualTo("refunded");
     assertThat(refunded.refundRequestId()).isNotNull();
     assertThat(refunded.refundRequested()).isTrue();
     assertThat(refunded.sameDiaryPayments()).isZero();
+  }
+
+  @Test
+  @DisplayName("PayPal(USD) 결제는 method·currency·2.99 로 내려가고, 합계는 통화별로 나누며 paidAmount 는 원화만")
+  void getPayments_PAYPAL_통화별합계() {
+    Diary diary = diaryRepository.save(paidDiary(mina));
+    DiaryPayment paypal =
+        DiaryPayment.createPending(
+            diary.getId(),
+            mina.getId(),
+            "DIA-20261107-PAYPAL0001",
+            DiaryPaymentMethod.PAYPAL,
+            new BigDecimal("2.99"),
+            Instant.parse("2026-11-07T00:00:00Z"));
+    paypal.markPaid("pk_pp", Instant.parse("2026-11-07T00:00:00Z"), "해외간편결제(PAYPAL)");
+    diaryPaymentRepository.saveAndFlush(paypal);
+
+    AdminPaymentPageResponse page = adminPaymentService.getPayments(null, null, null, null, 0, 50);
+
+    AdminPaymentResponse item =
+        page.items().stream()
+            .filter(it -> it.id().equals(paypal.getId()))
+            .findFirst()
+            .orElseThrow();
+    assertThat(item.method()).isEqualTo(DiaryPaymentMethod.PAYPAL);
+    assertThat(item.currency()).isEqualTo(PaymentCurrency.USD);
+    assertThat(item.amount()).isEqualTo(new BigDecimal("2.99"));
+    assertThat(item.methodDetail()).isEqualTo("해외간편결제(PAYPAL)");
+    assertThat(page.summary().paidCount()).isEqualTo(3);
+    assertThat(page.summary().paidAmount()).isEqualTo(6000);
+    assertThat(page.summary().paidAmounts())
+        .containsExactly(
+            Map.entry(PaymentCurrency.KRW, new BigDecimal("6000")),
+            Map.entry(PaymentCurrency.USD, new BigDecimal("2.99")));
   }
 
   @Test
@@ -164,7 +213,8 @@ class AdminPaymentIntegrationTest {
     AdminPaymentPageResponse none =
         adminPaymentService.getPayments(null, "nobody", null, null, 0, 50);
     assertThat(none.items()).isEmpty();
-    assertThat(none.summary()).isEqualTo(new AdminPaymentPageResponse.Summary(0, 0, 0, 0));
+    assertThat(none.summary())
+        .isEqualTo(new AdminPaymentPageResponse.Summary(0, 0, 0, 0, Map.of(), Map.of()));
   }
 
   @Test
@@ -175,7 +225,10 @@ class AdminPaymentIntegrationTest {
     AdminPaymentPageResponse page = adminPaymentService.getPayments(null, null, nov4, nov4, 0, 50);
 
     assertThat(ids(page)).containsExactly(jinRefunded.getId());
-    assertThat(page.summary()).isEqualTo(new AdminPaymentPageResponse.Summary(0, 0, 1, 3000));
+    assertThat(page.summary())
+        .isEqualTo(
+            new AdminPaymentPageResponse.Summary(
+                0, 0, 1, 3000, Map.of(), Map.of(PaymentCurrency.KRW, new BigDecimal("3000"))));
     assertThat(
             ids(
                 adminPaymentService.getPayments(

@@ -117,6 +117,7 @@ public class RefundRequestService {
               inquiry.getLanguage(),
               inquiry.getTitle(),
               payment.orderNumber(),
+              payment.currency().name(),
               payment.amount(),
               payment.diary() != null && payment.diary().first());
       eventPublisher.publishEvent(

@@ -48,12 +48,17 @@ public record AdminRefundRequestResponse(
 
   /**
    * @param orderId 토스 orderId (= diary_payments.order_number)
+   * @param amount 결제 통화 단위 금액 (KRW 3000, USD 2.99)
+   * @param method CARD | PAYPAL
+   * @param currency KRW | USD
    * @param diary 다이어리를 찾을 수 없으면 null
    */
   public record Payment(
       UUID id,
       String orderId,
       BigDecimal amount,
+      String method,
+      String currency,
       String provider,
       Instant paidAt,
       Instant refundConsentAt,
@@ -130,6 +135,8 @@ public record AdminRefundRequestResponse(
         payment.id(),
         payment.orderNumber(),
         payment.amount(),
+        payment.method().name(),
+        payment.currency().name(),
         PROVIDER,
         payment.paidAt(),
         payment.refundConsentAt(),

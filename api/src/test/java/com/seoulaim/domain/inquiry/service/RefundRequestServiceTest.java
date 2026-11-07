@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.seoulaim.domain.diary.dto.PaymentRefundInfo;
+import com.seoulaim.domain.diary.entity.DiaryPaymentMethod;
 import com.seoulaim.domain.diary.entity.DiaryPaymentStatus;
 import com.seoulaim.domain.diary.service.DiaryPaymentService;
 import com.seoulaim.domain.inquiry.admin.dto.AdminRefundApproveRequest;
@@ -21,9 +22,11 @@ import com.seoulaim.domain.inquiry.entity.InquiryCategory;
 import com.seoulaim.domain.inquiry.entity.InquiryStatus;
 import com.seoulaim.domain.inquiry.entity.RefundStatus;
 import com.seoulaim.domain.inquiry.repository.InquiryRepository;
+import com.seoulaim.domain.order.gateway.PaymentCurrency;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
 import com.seoulaim.global.mail.EmailSender;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -89,7 +92,9 @@ class RefundRequestServiceTest {
     return new PaymentRefundInfo(
         paymentId,
         "DIA-20261104-ABCDE12345",
-        new java.math.BigDecimal("3000"),
+        new BigDecimal("3000"),
+        DiaryPaymentMethod.CARD,
+        PaymentCurrency.KRW,
         DiaryPaymentStatus.REFUNDED,
         NOW.minusSeconds(86_400),
         NOW.minusSeconds(86_400),

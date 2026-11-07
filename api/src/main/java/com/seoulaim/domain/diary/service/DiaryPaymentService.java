@@ -23,7 +23,6 @@ import com.seoulaim.domain.inquiry.service.RefundRequestQueryService;
 import com.seoulaim.domain.order.gateway.PaymentCancelResult;
 import com.seoulaim.domain.order.gateway.PaymentGateway;
 import com.seoulaim.domain.order.gateway.PaymentGatewayResolver;
-import com.seoulaim.domain.order.gateway.PaymentMerchant;
 import com.seoulaim.domain.order.gateway.PaymentResult;
 import com.seoulaim.global.config.DiaryProperties;
 import com.seoulaim.global.config.TossPaymentProperties;
@@ -298,8 +297,8 @@ public class DiaryPaymentService {
    *   <li>그 외: soft delete
    * </ul>
    *
-   * <p>토스가 취소를 거절하면 아무것도 바꾸지 않고 PAYMENT_REFUND_FAILED(fields 에 토스 code/message). 결제 행을 잠가 동시 승인이 두
-   * 번 취소하지 않게 한다.
+   * <p>취소는 결제 상점(merchant)의 게이트웨이로 보낸다 (전액 취소만). 토스가 취소를 거절하면 아무것도 바꾸지 않고
+   * PAYMENT_REFUND_FAILED(fields 에 토스 code/message). 결제 행을 잠가 동시 승인이 두 번 취소하지 않게 한다.
    */
   @Transactional
   public PaymentRefundInfo refund(UUID paymentId, String cancelReason) {
@@ -312,9 +311,18 @@ public class DiaryPaymentService {
           ErrorCode.PAYMENT_REFUND_FAILED,
           Map.of("code", "NOT_PAID", "message", "결제 완료(PAID) 상태가 아닙니다: " + payment.getStatus()));
     }
+    if (!paymentGatewayResolver.isAvailable(payment.getMerchant())) {
+      throw new BusinessException(
+          ErrorCode.PAYMENT_REFUND_FAILED,
+          Map.of(
+              "code",
+              "MERCHANT_UNAVAILABLE",
+              "message",
+              "결제 상점(" + payment.getMerchant() + ") 키가 설정되지 않았습니다"));
+    }
     PaymentCancelResult result =
         paymentGatewayResolver
-            .forMerchant(PaymentMerchant.KRW)
+            .forMerchant(payment.getMerchant())
             .cancel(payment.getTossPaymentKey(), cancelReason);
     Instant now = clock.instant();
     switch (result) {

@@ -802,6 +802,92 @@ class DiaryPaymentServiceTest {
     }
   }
 
+  @Test
+  @DisplayName("환불: PAYPAL 결제는 외화 MID 게이트웨이로 전액 취소한다")
+  void refund_PAYPAL_외화게이트웨이() {
+    Diary second = Diary.create(USER_ID, false);
+    second.markPaid();
+    DiaryPayment payment = givenLockedPaypalPaidPayment(second);
+    given(foreignGateway.cancel("pk_pp", CANCEL_REASON))
+        .willReturn(PaymentCancelResult.success("tx_pp", NOW, "{}"));
+
+    PaymentRefundInfo info = diaryPaymentService.refund(payment.getId(), CANCEL_REASON);
+
+    assertThat(payment.getStatus()).isEqualTo(DiaryPaymentStatus.REFUNDED);
+    assertThat(info.method()).isEqualTo(DiaryPaymentMethod.PAYPAL);
+    assertThat(info.currency()).isEqualTo(PaymentCurrency.USD);
+    assertThat(info.amount()).isEqualTo(USD_AMOUNT);
+    verify(paymentGateway, never()).cancel(anyString(), anyString());
+  }
+
+  @Test
+  @DisplayName("환불: CARD 결제는 원화 MID 게이트웨이로 취소한다")
+  void refund_CARD_원화게이트웨이() {
+    Diary second = Diary.create(USER_ID, false);
+    second.markPaid();
+    DiaryPayment payment = givenLockedPaidPayment(second);
+    given(paymentGateway.cancel("pk", CANCEL_REASON))
+        .willReturn(PaymentCancelResult.success("tx", NOW, "{}"));
+
+    diaryPaymentService.refund(payment.getId(), CANCEL_REASON);
+
+    assertThat(payment.getStatus()).isEqualTo(DiaryPaymentStatus.REFUNDED);
+    verify(foreignGateway, never()).cancel(anyString(), anyString());
+  }
+
+  @Test
+  @DisplayName("환불: 외화 키를 뺀 뒤 PAYPAL 결제를 취소하면 토스 호출 없이 PAYMENT_REFUND_FAILED(MERCHANT_UNAVAILABLE)")
+  void refund_외화키없음_PAYPAL_실패() {
+    Diary second = Diary.create(USER_ID, false);
+    second.markPaid();
+    DiaryPayment payment = givenLockedPaypalPaidPayment(second);
+
+    assertThatThrownBy(() -> krwOnlyService().refund(payment.getId(), CANCEL_REASON))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            exception -> {
+              assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PAYMENT_REFUND_FAILED);
+              assertThat(exception.getFields()).containsEntry("code", "MERCHANT_UNAVAILABLE");
+            });
+    assertThat(payment.getStatus()).isEqualTo(DiaryPaymentStatus.PAID);
+    verify(paymentGateway, never()).cancel(anyString(), anyString());
+  }
+
+  @Test
+  @DisplayName("내 결제 내역: method·currency 와 통화 단위 금액을 내린다")
+  void getMyPayments_PAYPAL_통화포함() {
+    Diary diary = Diary.create(USER_ID, false);
+    diary.markPaid();
+    DiaryPayment payment =
+        DiaryPayment.createPending(
+            diary.getId(), USER_ID, "DIA-PP", DiaryPaymentMethod.PAYPAL, USD_AMOUNT, NOW);
+    payment.markPaid("pk_pp", NOW);
+    given(
+            diaryPaymentRepository.findAllByUserIdAndStatusInOrderByPaidAtDescIdDesc(
+                USER_ID, List.of(DiaryPaymentStatus.PAID, DiaryPaymentStatus.REFUNDED)))
+        .willReturn(List.of(payment));
+    given(diaryRepository.findAllByIdIn(List.of(diary.getId()))).willReturn(List.of(diary));
+    given(refundRequestQueryService.findRequestedPaymentIds(List.of(payment.getId())))
+        .willReturn(Set.of());
+
+    MyPaymentResponse response = diaryPaymentService.getMyPayments(USER_ID).getFirst();
+
+    assertThat(response.method()).isEqualTo(DiaryPaymentMethod.PAYPAL);
+    assertThat(response.currency()).isEqualTo(PaymentCurrency.USD);
+    assertThat(response.amount()).isEqualTo(USD_AMOUNT);
+  }
+
+  private DiaryPayment givenLockedPaypalPaidPayment(Diary diary) {
+    DiaryPayment payment =
+        DiaryPayment.createPending(
+            diary.getId(), USER_ID, "DIA-PP-PAID", DiaryPaymentMethod.PAYPAL, USD_AMOUNT, NOW);
+    payment.markPaid("pk_pp", NOW.minus(Duration.ofDays(1)));
+    given(diaryPaymentRepository.findWithLockById(payment.getId()))
+        .willReturn(Optional.of(payment));
+    lenient().when(diaryRepository.findById(diary.getId())).thenReturn(Optional.of(diary));
+    return payment;
+  }
+
   private DiaryPayment givenLockedPaidPayment(Diary diary) {
     DiaryPayment payment = paid(diary, NOW.minus(Duration.ofDays(1)));
     given(diaryPaymentRepository.findWithLockById(payment.getId()))
