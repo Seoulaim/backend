@@ -3,10 +3,10 @@ package com.seoulaim.domain.order.gateway;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.seoulaim.global.config.TossPaymentProperties;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -15,12 +15,10 @@ import java.time.format.DateTimeParseException;
 import java.util.Base64;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
-import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -31,9 +29,10 @@ import org.springframework.web.client.RestClientException;
  *   <li>승인: https://docs.tosspayments.com/reference#결제-승인
  *   <li>취소: https://docs.tosspayments.com/reference#결제-취소
  * </ul>
+ *
+ * <p>시크릿 키(상점 MID)마다 인스턴스를 하나씩 만든다. 빈 등록은 {@link TossPaymentGatewayConfig}.
  */
 @Slf4j
-@Component
 public class TossPaymentGateway implements PaymentGateway {
 
   static final String BASE_URL = "https://api.tosspayments.com";
@@ -45,12 +44,9 @@ public class TossPaymentGateway implements PaymentGateway {
   private final RestClient restClient;
   private final ObjectMapper objectMapper;
 
-  @Autowired
   public TossPaymentGateway(
-      RestClient.Builder restClientBuilder,
-      TossPaymentProperties properties,
-      ObjectMapper objectMapper) {
-    this(buildRestClient(restClientBuilder, properties), objectMapper);
+      RestClient.Builder restClientBuilder, String secretKey, ObjectMapper objectMapper) {
+    this(buildRestClient(restClientBuilder, secretKey), objectMapper);
   }
 
   // 테스트에서 MockRestServiceServer 에 묶인 RestClient 를 넣는다
@@ -60,20 +56,22 @@ public class TossPaymentGateway implements PaymentGateway {
   }
 
   private static RestClient buildRestClient(
-      RestClient.Builder restClientBuilder, TossPaymentProperties properties) {
+      RestClient.Builder restClientBuilder, String secretKey) {
     SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
     requestFactory.setConnectTimeout(Duration.ofSeconds(5));
     // 토스 승인·취소 API 는 카드사 응답을 기다리므로 읽기 타임아웃을 넉넉히 둔다
     requestFactory.setReadTimeout(Duration.ofSeconds(30));
+    // 상점마다 기본 Authorization 헤더가 달라 빌더를 복제한다 (같은 빌더에 쌓이지 않게)
     return restClientBuilder
+        .clone()
         .baseUrl(BASE_URL)
         .requestFactory(requestFactory)
-        .defaultHeader(HttpHeaders.AUTHORIZATION, basicAuth(properties.secretKey()))
+        .defaultHeader(HttpHeaders.AUTHORIZATION, basicAuth(secretKey))
         .build();
   }
 
   @Override
-  public PaymentResult confirm(String paymentKey, String orderId, long amount) {
+  public PaymentResult confirm(String paymentKey, String orderId, BigDecimal amount) {
     try {
       return restClient
           .post()
@@ -154,6 +152,7 @@ public class TossPaymentGateway implements PaymentGateway {
       return PaymentResult.success(
           json.path("paymentKey").asText(null),
           json.path("method").asText(null),
+          json.path("easyPay").path("provider").asText(null),
           parseInstant(json.path("approvedAt").asText(null)),
           body);
     }

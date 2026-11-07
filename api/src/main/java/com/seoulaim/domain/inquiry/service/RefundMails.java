@@ -1,5 +1,6 @@
 package com.seoulaim.domain.inquiry.service;
 
+import java.math.BigDecimal;
 import java.util.Locale;
 import java.util.Map;
 
@@ -77,7 +78,7 @@ final class RefundMails {
   private RefundMails() {}
 
   static Mail approved(
-      String language, String title, String orderNumber, long amount, boolean firstDiary) {
+      String language, String title, String orderNumber, BigDecimal amount, boolean firstDiary) {
     Texts texts = texts(language);
     String text =
         String.join(
@@ -88,7 +89,7 @@ final class RefundMails {
                     texts.orderLabel(),
                     orderNumber,
                     texts.amountLabel(),
-                    String.format(Locale.ROOT, "%,d", amount)),
+                    String.format(Locale.ROOT, "%,d", amount.longValueExact())),
             firstDiary ? texts.firstDiary() : texts.otherDiary(),
             texts.cardNotice(),
             SIGNATURE);

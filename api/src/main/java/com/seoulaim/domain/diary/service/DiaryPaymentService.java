@@ -26,6 +26,7 @@ import com.seoulaim.global.config.DiaryProperties;
 import com.seoulaim.global.config.TossPaymentProperties;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
+import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
@@ -121,7 +122,7 @@ public class DiaryPaymentService {
         diaryPaymentRepository
             .findWithLockByIdAndUserId(paymentId, userId)
             .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
-    if (request.amount() != payment.getAmount()) {
+    if (payment.getAmount().compareTo(BigDecimal.valueOf(request.amount())) != 0) {
       throw new BusinessException(ErrorCode.PAYMENT_AMOUNT_MISMATCH);
     }
     if (payment.isPaid()) {
@@ -140,7 +141,7 @@ public class DiaryPaymentService {
         payment.markPaid(
             success.paymentKey() == null ? request.paymentKey() : success.paymentKey(),
             success.approvedAt() == null ? clock.instant() : success.approvedAt(),
-            success.method());
+            success.methodDetail());
         diaryRepository
             .findById(payment.getDiaryId())
             .orElseThrow(() -> new BusinessException(ErrorCode.DIARY_NOT_FOUND))

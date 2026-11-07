@@ -66,7 +66,7 @@ class AdminRefundRequestControllerTest {
         new AdminRefundRequestResponse.Payment(
             UUID.randomUUID(),
             "DIA-20261104-ABCDE12345",
-            3000L,
+            new java.math.BigDecimal("3000"),
             "toss",
             Instant.parse("2026-11-04T03:00:00Z"),
             Instant.parse("2026-11-04T02:59:00Z"),

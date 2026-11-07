@@ -1,5 +1,6 @@
 package com.seoulaim.domain.diary.admin.dto;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -22,7 +23,7 @@ public record AdminPaymentResponse(
     String orderId,
     Member member,
     Diary diary,
-    long amount,
+    BigDecimal amount,
     String provider,
     String status,
     Instant createdAt,

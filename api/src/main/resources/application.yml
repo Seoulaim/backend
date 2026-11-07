@@ -48,9 +48,17 @@ app:
     price: ${DIARY_PRICE:3000}
     # 첫 무료 다이어리에서 결제 없이 저장할 수 있는 최대 spread 수
     free-spreads: ${DIARY_FREE_SPREADS:2}
+    # 유료 다이어리 1권 가격 (달러, 소수 2자리). PayPal(외화 MID) 결제 금액
+    price-usd: ${DIARY_PRICE_USD:2.99}
   payment:
     toss:
       # 토스페이먼츠 시크릿 키. 모든 프로파일에서 환경변수 필수 (기본값 없음)
       secret-key: ${TOSS_SECRET_KEY}
-      # iOS 결제창 SDK 에 내려주는 클라이언트 키
+      # 원화 MID (카드, 결제창 v1). 결제창 SDK 에 내려주는 클라이언트 키
       client-key: ${TOSS_CLIENT_KEY:}
+      # 외화 MID (PayPal, USD, 결제위젯 v2 키 *_gck_ / *_gsk_). 둘 중 하나라도 비면 PayPal 을 숨긴다
+      foreign:
+        client-key: ${TOSS_FOREIGN_CLIENT_KEY:}
+        secret-key: ${TOSS_FOREIGN_SECRET_KEY:}
+        # 결제위젯 PayPal UI 의 variantKey (토스 상점관리자에서 만든 값)
+        paypal-variant-key: ${TOSS_PAYPAL_VARIANT_KEY:PAYPAL}

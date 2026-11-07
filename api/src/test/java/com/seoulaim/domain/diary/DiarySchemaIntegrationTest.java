@@ -7,6 +7,7 @@ import com.seoulaim.domain.diary.entity.Diary;
 import com.seoulaim.domain.diary.entity.DiaryDownload;
 import com.seoulaim.domain.diary.entity.DiaryDownloadFormat;
 import com.seoulaim.domain.diary.entity.DiaryPayment;
+import com.seoulaim.domain.diary.entity.DiaryPaymentMethod;
 import com.seoulaim.domain.diary.entity.DiaryPaymentStatus;
 import com.seoulaim.domain.diary.entity.DiaryStatus;
 import com.seoulaim.domain.diary.entity.DiarySticker;
@@ -17,8 +18,11 @@ import com.seoulaim.domain.diary.repository.DiaryPaymentRepository;
 import com.seoulaim.domain.diary.repository.DiaryRepository;
 import com.seoulaim.domain.diary.repository.DiaryStickerRepository;
 import com.seoulaim.domain.diary.repository.DiaryTemplateRepository;
+import com.seoulaim.domain.order.gateway.PaymentCurrency;
+import com.seoulaim.domain.order.gateway.PaymentMerchant;
 import com.seoulaim.domain.user.entity.User;
 import com.seoulaim.domain.user.repository.UserRepository;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -129,6 +133,38 @@ class DiarySchemaIntegrationTest {
     assertThat(diaryRepository.existsByUserIdAndIsFreeTrue(userId)).isTrue();
     assertThatThrownBy(() -> diaryRepository.saveAndFlush(Diary.create(userId, true)))
         .isInstanceOf(DataIntegrityViolationException.class);
+  }
+
+  @Test
+  @DisplayName("PayPal 결제는 method·merchant·currency 와 소수 금액 2.99 가 그대로 저장·조회된다")
+  void save_PAYPAL결제_USD금액왕복() {
+    UUID userId = saveUser();
+    Diary diary = diaryRepository.saveAndFlush(Diary.create(userId, false));
+    DiaryPayment paypal =
+        DiaryPayment.createPending(
+            diary.getId(),
+            userId,
+            "DIA-20261107-PAYPAL0001",
+            DiaryPaymentMethod.PAYPAL,
+            new BigDecimal("2.99"),
+            Instant.parse("2026-11-07T00:00:00Z"));
+    paypal.markPaid("pk_pp", Instant.parse("2026-11-07T00:00:00Z"), "해외간편결제(PAYPAL)");
+    DiaryPayment card = payment(diary, "DIA-20261107-CARD000001");
+    diaryPaymentRepository.saveAllAndFlush(List.of(paypal, card));
+
+    DiaryPayment found = diaryPaymentRepository.findById(paypal.getId()).orElseThrow();
+    assertThat(found.getMethod()).isEqualTo(DiaryPaymentMethod.PAYPAL);
+    assertThat(found.getMerchant()).isEqualTo(PaymentMerchant.FOREIGN);
+    assertThat(found.getCurrency()).isEqualTo(PaymentCurrency.USD);
+    assertThat(found.getAmount()).isEqualTo(new BigDecimal("2.99"));
+    assertThat(found.getMethodDetail()).isEqualTo("해외간편결제(PAYPAL)");
+    // DB 는 numeric(12,2) 라 3000.00 이지만 KRW 는 소수 없이 돌려준다
+    assertThat(diaryPaymentRepository.findById(card.getId()).orElseThrow().getAmount())
+        .isEqualTo(new BigDecimal("3000"));
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "select amount from diary_payments where id = ?", BigDecimal.class, paypal.getId()))
+        .isEqualTo(new BigDecimal("2.99"));
   }
 
   @Test

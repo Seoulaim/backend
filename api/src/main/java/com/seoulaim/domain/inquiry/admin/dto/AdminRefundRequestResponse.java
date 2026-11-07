@@ -4,6 +4,7 @@ import com.seoulaim.domain.diary.dto.PaymentRefundInfo;
 import com.seoulaim.domain.diary.dto.RefundPolicyCheck;
 import com.seoulaim.domain.inquiry.entity.Inquiry;
 import com.seoulaim.domain.inquiry.entity.RefundStatus;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -52,7 +53,7 @@ public record AdminRefundRequestResponse(
   public record Payment(
       UUID id,
       String orderId,
-      long amount,
+      BigDecimal amount,
       String provider,
       Instant paidAt,
       Instant refundConsentAt,

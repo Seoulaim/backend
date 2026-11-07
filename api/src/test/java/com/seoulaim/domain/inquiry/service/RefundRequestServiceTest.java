@@ -89,7 +89,7 @@ class RefundRequestServiceTest {
     return new PaymentRefundInfo(
         paymentId,
         "DIA-20261104-ABCDE12345",
-        3000L,
+        new java.math.BigDecimal("3000"),
         DiaryPaymentStatus.REFUNDED,
         NOW.minusSeconds(86_400),
         NOW.minusSeconds(86_400),

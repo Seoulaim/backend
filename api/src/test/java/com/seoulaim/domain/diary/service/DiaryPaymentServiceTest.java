@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.lenient;
@@ -179,7 +178,9 @@ class DiaryPaymentServiceTest {
     DiaryPayment payment = givenLockedPayment(diary);
     given(diaryRepository.findById(diary.getId())).willReturn(Optional.of(diary));
     Instant approvedAt = NOW.minusSeconds(5);
-    given(paymentGateway.confirm("pk_1", payment.getOrderNumber(), PRICE))
+    given(
+            paymentGateway.confirm(
+                "pk_1", payment.getOrderNumber(), java.math.BigDecimal.valueOf(PRICE)))
         .willReturn(PaymentResult.success("pk_1", "카드", approvedAt, "{}"));
 
     DiaryPaymentConfirmResponse response =
@@ -190,7 +191,7 @@ class DiaryPaymentServiceTest {
     assertThat(payment.getStatus()).isEqualTo(DiaryPaymentStatus.PAID);
     assertThat(payment.getPaidAt()).isEqualTo(approvedAt);
     assertThat(payment.getTossPaymentKey()).isEqualTo("pk_1");
-    assertThat(payment.getMethod()).isEqualTo("카드");
+    assertThat(payment.getMethodDetail()).isEqualTo("카드");
     assertThat(diary.isPaid()).isTrue();
   }
 
@@ -205,7 +206,8 @@ class DiaryPaymentServiceTest {
                     USER_ID, payment.getId(), new DiaryPaymentConfirmRequest("pk_1", PRICE - 1)))
         .extracting("errorCode")
         .isEqualTo(ErrorCode.PAYMENT_AMOUNT_MISMATCH);
-    verify(paymentGateway, never()).confirm(anyString(), anyString(), anyLong());
+    verify(paymentGateway, never())
+        .confirm(anyString(), anyString(), any(java.math.BigDecimal.class));
   }
 
   @Test
@@ -213,7 +215,9 @@ class DiaryPaymentServiceTest {
   void confirm_토스실패_402() {
     Diary diary = Diary.create(USER_ID, false);
     DiaryPayment payment = givenLockedPayment(diary);
-    given(paymentGateway.confirm("pk_1", payment.getOrderNumber(), PRICE))
+    given(
+            paymentGateway.confirm(
+                "pk_1", payment.getOrderNumber(), java.math.BigDecimal.valueOf(PRICE)))
         .willReturn(PaymentResult.failure("REJECT_CARD_COMPANY", "카드사 거절", "{}"));
 
     assertThatThrownBy(
@@ -244,7 +248,8 @@ class DiaryPaymentServiceTest {
             USER_ID, payment.getId(), new DiaryPaymentConfirmRequest("pk_1", PRICE));
 
     assertThat(response.diaryId()).isEqualTo(diary.getId());
-    verify(paymentGateway, never()).confirm(anyString(), anyString(), anyLong());
+    verify(paymentGateway, never())
+        .confirm(anyString(), anyString(), any(java.math.BigDecimal.class));
   }
 
   @Test

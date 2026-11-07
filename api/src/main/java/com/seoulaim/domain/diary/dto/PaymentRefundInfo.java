@@ -5,6 +5,7 @@ import com.seoulaim.domain.diary.entity.DiaryDownload;
 import com.seoulaim.domain.diary.entity.DiaryDownloadFormat;
 import com.seoulaim.domain.diary.entity.DiaryPayment;
 import com.seoulaim.domain.diary.entity.DiaryPaymentStatus;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -18,7 +19,7 @@ import java.util.UUID;
 public record PaymentRefundInfo(
     UUID id,
     String orderNumber,
-    long amount,
+    BigDecimal amount,
     DiaryPaymentStatus status,
     Instant paidAt,
     Instant refundConsentAt,

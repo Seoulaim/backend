@@ -8,6 +8,7 @@ import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -76,17 +77,16 @@ public class AdminPaymentQueryRepository {
     CriteriaQuery<Tuple> query = cb.createTupleQuery();
     Root<DiaryPayment> root = query.from(DiaryPayment.class);
     query
-        .multiselect(root.get("status"), cb.count(root), cb.sum(root.<Long>get("amount")))
+        .multiselect(root.get("status"), cb.count(root), cb.sum(root.<BigDecimal>get("amount")))
         .where(predicates(cb, root, filter))
         .groupBy(root.get("status"));
     return entityManager.createQuery(query).getResultList().stream()
         .map(
             tuple -> {
-              Long amount = tuple.get(2, Long.class);
+              BigDecimal sum = tuple.get(2, BigDecimal.class);
+              long amount = sum == null ? 0 : sum.longValue();
               return new StatusTotal(
-                  tuple.get(0, DiaryPaymentStatus.class),
-                  tuple.get(1, Long.class),
-                  amount == null ? 0 : amount);
+                  tuple.get(0, DiaryPaymentStatus.class), tuple.get(1, Long.class), amount);
             })
         .toList();
   }

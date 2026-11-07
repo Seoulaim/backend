@@ -167,7 +167,7 @@ public class AdminPaymentService {
         payment.getEditedAt(),
         refundRequest != null && refundRequest.requested(),
         refundRequest == null ? null : refundRequest.inquiryId(),
-        payment.getMethod(),
+        payment.getMethodDetail(),
         sameDiaryPayments);
   }
 

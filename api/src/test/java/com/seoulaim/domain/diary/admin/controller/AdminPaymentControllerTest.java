@@ -47,7 +47,7 @@ class AdminPaymentControllerTest {
         "DIA-20261104-ABCDE12345",
         new AdminPaymentResponse.Member(UUID.randomUUID(), "Jin", "jin@example.com"),
         new AdminPaymentResponse.Diary(UUID.randomUUID(), "My Diary", false, 4, null, false),
-        3000L,
+        new java.math.BigDecimal("3000"),
         "toss",
         "paid",
         Instant.parse("2026-11-04T02:59:00Z"),

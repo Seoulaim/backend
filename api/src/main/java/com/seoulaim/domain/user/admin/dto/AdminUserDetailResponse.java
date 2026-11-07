@@ -1,6 +1,7 @@
 package com.seoulaim.domain.user.admin.dto;
 
 import com.seoulaim.domain.artist.dto.ArtistWithGroupResponse;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -64,7 +65,7 @@ public record AdminUserDetailResponse(
       UUID id,
       String orderNumber,
       UUID diaryId,
-      long amount,
+      BigDecimal amount,
       String status,
       Instant paidAt,
       Instant refundedAt) {}

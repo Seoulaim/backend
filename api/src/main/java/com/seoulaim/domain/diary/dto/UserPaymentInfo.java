@@ -1,6 +1,7 @@
 package com.seoulaim.domain.diary.dto;
 
 import com.seoulaim.domain.diary.entity.DiaryPayment;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.UUID;
@@ -14,7 +15,7 @@ public record UserPaymentInfo(
     UUID id,
     String orderNumber,
     UUID diaryId,
-    long amount,
+    BigDecimal amount,
     String status,
     Instant paidAt,
     Instant refundedAt) {
