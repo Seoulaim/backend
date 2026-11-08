@@ -4,7 +4,10 @@ import com.seoulaim.domain.diary.entity.Diary;
 import com.seoulaim.domain.diary.entity.DiaryDownload;
 import com.seoulaim.domain.diary.entity.DiaryDownloadFormat;
 import com.seoulaim.domain.diary.entity.DiaryPayment;
+import com.seoulaim.domain.diary.entity.DiaryPaymentMethod;
 import com.seoulaim.domain.diary.entity.DiaryPaymentStatus;
+import com.seoulaim.domain.order.gateway.PaymentCurrency;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -12,13 +15,16 @@ import java.util.UUID;
 /**
  * 환불 관리(어드민)·환불 메일용 결제 정보. API 응답으로 직접 쓰지 않는다.
  *
+ * @param amount 결제 통화 단위 금액 (KRW 3000, USD 2.99)
  * @param diary 다이어리를 찾을 수 없으면 null (soft delete 된 다이어리는 그대로 보여준다)
  * @param policy 지금 시점의 환불 정책 항목별 판정
  */
 public record PaymentRefundInfo(
     UUID id,
     String orderNumber,
-    long amount,
+    BigDecimal amount,
+    DiaryPaymentMethod method,
+    PaymentCurrency currency,
     DiaryPaymentStatus status,
     Instant paidAt,
     Instant refundConsentAt,
@@ -87,6 +93,8 @@ public record PaymentRefundInfo(
         payment.getId(),
         payment.getOrderNumber(),
         payment.getAmount(),
+        payment.getMethod(),
+        payment.getCurrency(),
         payment.getStatus(),
         payment.getPaidAt(),
         payment.getRefundConsentAt(),

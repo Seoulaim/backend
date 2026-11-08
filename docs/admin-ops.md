@@ -33,6 +33,7 @@
       "member": { "id": "019a...", "nickname": "Jin", "email": "jin@example.com" },
       "diary": { "id": "019a4c10-...", "name": "My Diary", "first": false, "pages": 4, "completedAt": null, "deleted": false },
       "amount": 3000,
+      "currency": "KRW",
       "provider": "toss",
       "status": "paid",
       "createdAt": "2026-11-04T02:59:30Z",
@@ -42,14 +43,22 @@
       "editedAt": null,
       "refundRequested": true,
       "refundRequestId": "019a5a30-...",
-      "method": "카드",
+      "method": "CARD",
+      "methodDetail": "카드",
       "sameDiaryPayments": 0
     }
   ],
   "page": 0,
   "size": 50,
   "totalElements": 1,
-  "summary": { "paidCount": 12, "paidAmount": 36000, "refundedCount": 1, "refundedAmount": 3000 }
+  "summary": {
+    "paidCount": 13,
+    "paidAmount": 36000,
+    "refundedCount": 1,
+    "refundedAmount": 3000,
+    "paidAmounts": { "KRW": 36000, "USD": 2.99 },
+    "refundedAmounts": { "KRW": 3000 }
+  }
 }
 ```
 
@@ -61,9 +70,11 @@
 | `status` | 결제 상태 그대로. 환불 요청 중인지는 `refundRequested` 로 본다 (mock 의 `refund-requested` 상태 대신) |
 | `editedAt` | 결제 후 첫 편집 시각 (환불 정책 판단용) |
 | `refundRequested` / `refundRequestId` | 처리 대기 환불 요청 여부 / 가장 최근 환불 요청(문의) id (`GET /admin/refund-requests/{id}`) |
-| `method` | 토스 승인 응답의 결제수단 (`카드`, `간편결제` 등). #57 이전 결제·미승인 결제는 `null` |
+| `amount`, `currency` | 결제 통화 단위 금액 (KRW `3000`, USD `2.99`) |
+| `method` | 회원이 고른 결제수단 `CARD` / `PAYPAL` (#59 이전 결제는 `CARD`) |
+| `methodDetail` | 토스 승인 응답의 결제수단 (`카드`, `간편결제(토스페이)`, `해외간편결제(PAYPAL)` 등). #57 이전 결제·미승인 결제는 `null`. #57~#59 사이에는 이 값이 `method` 로 나갔다 |
 | `sameDiaryPayments` | 이 결제가 `paid` 일 때 같은 다이어리의 다른 `paid` 결제 수. 1 이상이면 **중복 결제 의심** (환불 정책 제5조 1호) |
-| `summary` | `q`·`from`·`to` 를 적용한 전체 합계. **`status` 필터는 무시**한다 (상태 탭을 바꿔도 같은 합계). `paidCount`·`paidAmount` 는 지금 `paid` 인 것만 (환불된 결제는 `refunded*`) |
+| `summary` | `q`·`from`·`to` 를 적용한 전체 합계. **`status` 필터는 무시**한다 (상태 탭을 바꿔도 같은 합계). `paidCount`·`paidAmount` 는 지금 `paid` 인 것만 (환불된 결제는 `refunded*`). 건수는 모든 통화, **`paidAmount`·`refundedAmount` 는 원화만** (통화가 섞이면 더할 수 없어 하위 호환용으로 원화 합계). 통화별 합계는 `paidAmounts`·`refundedAmounts` (결제가 없는 통화는 빠진다) |
 
 ### 상세
 
@@ -159,7 +170,7 @@
   "payments": [
     {
       "id": "019a4c30-...", "orderNumber": "DIA-20261104-ABCDE12345", "diaryId": "019a4c10-...",
-      "amount": 3000, "status": "paid", "paidAt": "2026-11-04T03:00:00Z", "refundedAt": null
+      "amount": 3000, "method": "CARD", "currency": "KRW", "status": "paid", "paidAt": "2026-11-04T03:00:00Z", "refundedAt": null
     }
   ],
   "inquiries": [

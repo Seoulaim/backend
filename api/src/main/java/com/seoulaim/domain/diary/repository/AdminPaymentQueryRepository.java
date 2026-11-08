@@ -2,12 +2,14 @@ package com.seoulaim.domain.diary.repository;
 
 import com.seoulaim.domain.diary.entity.DiaryPayment;
 import com.seoulaim.domain.diary.entity.DiaryPaymentStatus;
+import com.seoulaim.domain.order.gateway.PaymentCurrency;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Tuple;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -44,8 +46,9 @@ public class AdminPaymentQueryRepository {
     }
   }
 
-  /** 상태별 건수·금액 합계. */
-  public record StatusTotal(DiaryPaymentStatus status, long count, long amount) {}
+  /** 상태·통화별 건수·금액 합계 (통화 단위). */
+  public record StatusTotal(
+      DiaryPaymentStatus status, PaymentCurrency currency, long count, BigDecimal amount) {}
 
   /** 최신순(created_at, id 내림차순). */
   public List<DiaryPayment> search(Filter filter, int page, int size) {
@@ -76,17 +79,23 @@ public class AdminPaymentQueryRepository {
     CriteriaQuery<Tuple> query = cb.createTupleQuery();
     Root<DiaryPayment> root = query.from(DiaryPayment.class);
     query
-        .multiselect(root.get("status"), cb.count(root), cb.sum(root.<Long>get("amount")))
+        .multiselect(
+            root.get("status"),
+            root.get("currency"),
+            cb.count(root),
+            cb.sum(root.<BigDecimal>get("amount")))
         .where(predicates(cb, root, filter))
-        .groupBy(root.get("status"));
+        .groupBy(root.get("status"), root.get("currency"));
     return entityManager.createQuery(query).getResultList().stream()
         .map(
             tuple -> {
-              Long amount = tuple.get(2, Long.class);
+              PaymentCurrency currency = tuple.get(1, PaymentCurrency.class);
+              BigDecimal amount = tuple.get(3, BigDecimal.class);
               return new StatusTotal(
                   tuple.get(0, DiaryPaymentStatus.class),
-                  tuple.get(1, Long.class),
-                  amount == null ? 0 : amount);
+                  currency,
+                  tuple.get(2, Long.class),
+                  currency.normalize(amount == null ? BigDecimal.ZERO : amount));
             })
         .toList();
   }

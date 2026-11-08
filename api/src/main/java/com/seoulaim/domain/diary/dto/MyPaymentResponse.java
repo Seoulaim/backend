@@ -2,7 +2,10 @@ package com.seoulaim.domain.diary.dto;
 
 import com.seoulaim.domain.diary.entity.Diary;
 import com.seoulaim.domain.diary.entity.DiaryPayment;
+import com.seoulaim.domain.diary.entity.DiaryPaymentMethod;
 import com.seoulaim.domain.diary.entity.DiaryPaymentStatus;
+import com.seoulaim.domain.order.gateway.PaymentCurrency;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -11,6 +14,9 @@ import java.util.UUID;
  *
  * @param name 삭제된 다이어리면 null
  * @param thumbnailKey 삭제된 다이어리이거나 완성 페이지가 없으면 null
+ * @param amount 결제 통화 단위 금액 (KRW 3000, USD 2.99)
+ * @param method CARD | PAYPAL
+ * @param currency KRW | USD
  * @param refundable PAID, 결제 후 7일 이내, 다이어리가 FINALIZED 아님, 처리 대기 환불 문의 없음
  * @param withinPolicy refundable 이고 결제 후 편집 이력 없음
  * @param refundRequested 처리 대기(REQUESTED) 환불 문의가 있음
@@ -20,7 +26,9 @@ public record MyPaymentResponse(
     UUID diaryId,
     String name,
     String thumbnailKey,
-    long amount,
+    BigDecimal amount,
+    DiaryPaymentMethod method,
+    PaymentCurrency currency,
     DiaryPaymentStatus status,
     Instant paidAt,
     boolean refundable,
@@ -39,6 +47,8 @@ public record MyPaymentResponse(
         visible ? diary.getName() : null,
         visible ? diary.thumbnailKey() : null,
         payment.getAmount(),
+        payment.getMethod(),
+        payment.getCurrency(),
         payment.getStatus(),
         payment.getPaidAt(),
         refundable,

@@ -1,11 +1,14 @@
 package com.seoulaim.domain.diary.entity;
 
+import com.seoulaim.domain.order.gateway.PaymentCurrency;
+import com.seoulaim.domain.order.gateway.PaymentMerchant;
 import com.seoulaim.global.common.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
@@ -13,7 +16,11 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-/** 다이어리 1건 결제. 토스 orderId 로는 orderNumber 를 쓴다. */
+/**
+ * 다이어리 1건 결제. 토스 orderId 로는 orderNumber 를 쓴다.
+ *
+ * <p>결제수단(method)마다 토스 상점(merchant)·통화(currency)가 정해진다. amount 는 통화 단위 금액(원, 달러)이다.
+ */
 @Getter
 @Entity
 @Table(name = "diary_payments")
@@ -26,7 +33,7 @@ public class DiaryPayment extends BaseEntity {
   static final String SUPERSEDED_CODE = "SUPERSEDED";
   private static final int FAILURE_CODE_MAX_LENGTH = 100;
   private static final int FAILURE_MESSAGE_MAX_LENGTH = 500;
-  private static final int METHOD_MAX_LENGTH = 30;
+  private static final int METHOD_DETAIL_MAX_LENGTH = 50;
 
   @Column(name = "diary_id", nullable = false)
   private UUID diaryId;
@@ -37,8 +44,22 @@ public class DiaryPayment extends BaseEntity {
   @Column(name = "order_number", nullable = false, unique = true, length = 64)
   private String orderNumber;
 
-  @Column(name = "amount", nullable = false)
-  private long amount;
+  @Enumerated(EnumType.STRING)
+  @Column(name = "method", nullable = false, length = 10)
+  private DiaryPaymentMethod method;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "merchant", nullable = false, length = 10)
+  private PaymentMerchant merchant;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "currency", nullable = false, length = 3)
+  private PaymentCurrency currency;
+
+  // 통화 단위 금액. 조회는 getAmount() (통화 소수 자릿수로 맞춘 값)
+  @Getter(AccessLevel.NONE)
+  @Column(name = "amount", nullable = false, precision = 12, scale = 2)
+  private BigDecimal amount;
 
   @Enumerated(EnumType.STRING)
   @Column(name = "status", nullable = false, length = 20)
@@ -53,9 +74,9 @@ public class DiaryPayment extends BaseEntity {
   @Column(name = "paid_at")
   private Instant paidAt;
 
-  // 토스 승인 응답의 결제수단 (예: 카드, 간편결제). 응답에 없거나 이전 결제면 null
-  @Column(name = "method", length = METHOD_MAX_LENGTH)
-  private String method;
+  // 토스 승인 응답의 결제수단 (예: 카드, 간편결제(토스페이)). 응답에 없거나 #57 이전 결제면 null
+  @Column(name = "method_detail", length = METHOD_DETAIL_MAX_LENGTH)
+  private String methodDetail;
 
   // 결제 후 처음 편집한 시각. 환불 정책(편집 전 전액 환불) 판단용
   @Column(name = "edited_at")
@@ -74,13 +95,36 @@ public class DiaryPayment extends BaseEntity {
   @Column(name = "failure_message", length = FAILURE_MESSAGE_MAX_LENGTH)
   private String failureMessage;
 
+  /** 원화 카드 결제 대기 건. */
   public static DiaryPayment createPending(
       UUID diaryId, UUID userId, String orderNumber, long amount, Instant refundConsentAt) {
+    return createPending(
+        diaryId,
+        userId,
+        orderNumber,
+        DiaryPaymentMethod.CARD,
+        BigDecimal.valueOf(amount),
+        refundConsentAt);
+  }
+
+  /**
+   * @param amount 결제수단 통화 단위 금액. 통화 소수 자릿수를 넘으면 ArithmeticException
+   */
+  public static DiaryPayment createPending(
+      UUID diaryId,
+      UUID userId,
+      String orderNumber,
+      DiaryPaymentMethod method,
+      BigDecimal amount,
+      Instant refundConsentAt) {
     DiaryPayment payment = new DiaryPayment();
     payment.diaryId = diaryId;
     payment.userId = userId;
     payment.orderNumber = orderNumber;
-    payment.amount = amount;
+    payment.method = method;
+    payment.merchant = method.merchant();
+    payment.currency = method.currency();
+    payment.amount = method.currency().normalize(amount);
     payment.status = DiaryPaymentStatus.PENDING;
     payment.refundConsentAt = refundConsentAt;
     return payment;
@@ -91,13 +135,18 @@ public class DiaryPayment extends BaseEntity {
   }
 
   /**
-   * @param method 토스 승인 응답의 결제수단. 없으면 null
+   * @param methodDetail 토스 승인 응답의 결제수단. 없으면 null
    */
-  public void markPaid(String tossPaymentKey, Instant paidAt, String method) {
+  public void markPaid(String tossPaymentKey, Instant paidAt, String methodDetail) {
     this.status = DiaryPaymentStatus.PAID;
     this.tossPaymentKey = tossPaymentKey;
     this.paidAt = paidAt;
-    this.method = truncate(method, METHOD_MAX_LENGTH);
+    this.methodDetail = truncate(methodDetail, METHOD_DETAIL_MAX_LENGTH);
+  }
+
+  /** 통화 소수 자릿수로 맞춘 금액 (KRW 3000, USD 2.99). DB 는 numeric(12,2) 라 KRW 도 3000.00 으로 읽힌다. */
+  public BigDecimal getAmount() {
+    return currency.normalize(amount);
   }
 
   public void markFailed(String tossPaymentKey, String code, String message) {

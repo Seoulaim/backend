@@ -14,13 +14,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.seoulaim.domain.diary.admin.dto.AdminPaymentDetailResponse;
 import com.seoulaim.domain.diary.admin.dto.AdminPaymentPageResponse;
 import com.seoulaim.domain.diary.admin.dto.AdminPaymentResponse;
+import com.seoulaim.domain.diary.entity.DiaryPaymentMethod;
 import com.seoulaim.domain.diary.service.AdminPaymentService;
+import com.seoulaim.domain.order.gateway.PaymentCurrency;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
 import com.seoulaim.global.security.SecurityTestConfig;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -47,7 +51,8 @@ class AdminPaymentControllerTest {
         "DIA-20261104-ABCDE12345",
         new AdminPaymentResponse.Member(UUID.randomUUID(), "Jin", "jin@example.com"),
         new AdminPaymentResponse.Diary(UUID.randomUUID(), "My Diary", false, 4, null, false),
-        3000L,
+        new BigDecimal("3000"),
+        PaymentCurrency.KRW,
         "toss",
         "paid",
         Instant.parse("2026-11-04T02:59:00Z"),
@@ -57,6 +62,7 @@ class AdminPaymentControllerTest {
         null,
         false,
         null,
+        DiaryPaymentMethod.CARD,
         "카드",
         0);
   }
@@ -73,7 +79,8 @@ class AdminPaymentControllerTest {
                 0,
                 50,
                 1,
-                new AdminPaymentPageResponse.Summary(1, 3000, 0, 0)));
+                new AdminPaymentPageResponse.Summary(
+                    1, 3000, 0, 0, Map.of(PaymentCurrency.KRW, new BigDecimal("3000")), Map.of())));
 
     mockMvc
         .perform(
@@ -87,10 +94,14 @@ class AdminPaymentControllerTest {
         .andExpect(jsonPath("$.items[0].member.email").value("jin@example.com"))
         .andExpect(jsonPath("$.items[0].provider").value("toss"))
         .andExpect(jsonPath("$.items[0].status").value("paid"))
-        .andExpect(jsonPath("$.items[0].method").value("카드"))
+        .andExpect(jsonPath("$.items[0].method").value("CARD"))
+        .andExpect(jsonPath("$.items[0].methodDetail").value("카드"))
+        .andExpect(jsonPath("$.items[0].currency").value("KRW"))
+        .andExpect(jsonPath("$.items[0].amount").value(3000))
         .andExpect(jsonPath("$.items[0].diary.deleted").value(false))
         .andExpect(jsonPath("$.totalElements").value(1))
-        .andExpect(jsonPath("$.summary.paidAmount").value(3000));
+        .andExpect(jsonPath("$.summary.paidAmount").value(3000))
+        .andExpect(jsonPath("$.summary.paidAmounts.KRW").value(3000));
   }
 
   @Test

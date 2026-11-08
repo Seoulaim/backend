@@ -13,7 +13,9 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
+import java.math.BigDecimal;
 import java.time.Instant;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -61,6 +63,58 @@ class TossPaymentGatewayTest {
     assertThat(success.paymentKey()).isEqualTo("pk_1");
     assertThat(success.method()).isEqualTo("카드");
     assertThat(success.approvedAt()).isEqualTo(Instant.parse("2026-11-05T03:00:00Z"));
+    server.verify();
+  }
+
+  @Test
+  @DisplayName("외화 MID 승인: amount 를 소수 그대로(숫자 2.99) 보내고 easyPay.provider 를 읽어 methodDetail 로 합친다")
+  void confirm_USD_소수금액과easyPay() {
+    server
+        .expect(requestTo(TossPaymentGateway.BASE_URL + "/v1/payments/confirm"))
+        .andExpect(method(HttpMethod.POST))
+        .andExpect(
+            content()
+                .json("{\"paymentKey\":\"pk_pp\",\"orderId\":\"DIA-1\",\"amount\":2.99}", true))
+        .andRespond(
+            withSuccess(
+                """
+                {"paymentKey":"pk_pp","method":"해외간편결제","currency":"USD","totalAmount":2.99,
+                 "easyPay":{"provider":"PAYPAL","amount":2.99},"approvedAt":"2026-11-07T12:00:00+09:00"}
+                """,
+                MediaType.APPLICATION_JSON));
+
+    PaymentResult result = gateway.confirm("pk_pp", "DIA-1", new BigDecimal("2.99"));
+
+    PaymentResult.Success success = (PaymentResult.Success) result;
+    assertThat(success.method()).isEqualTo("해외간편결제");
+    assertThat(success.easyPayProvider()).isEqualTo("PAYPAL");
+    assertThat(success.methodDetail()).isEqualTo("해외간편결제(PAYPAL)");
+    server.verify();
+  }
+
+  @Test
+  @DisplayName("easyPay 가 null 이면 methodDetail 은 method 그대로, 원화 정수 금액은 소수점 없이 보낸다")
+  void confirm_KRW_easyPay없음() {
+    server
+        .expect(requestTo(TossPaymentGateway.BASE_URL + "/v1/payments/confirm"))
+        .andExpect(
+            content()
+                .string(
+                    Matchers.allOf(
+                        Matchers.containsString("\"amount\":3000"),
+                        Matchers.not(Matchers.containsString("3000.")))))
+        .andRespond(
+            withSuccess(
+                """
+                {"paymentKey":"pk_1","method":"카드","easyPay":null}
+                """,
+                MediaType.APPLICATION_JSON));
+
+    PaymentResult.Success success =
+        (PaymentResult.Success) gateway.confirm("pk_1", "DIA-1", new BigDecimal("3000"));
+
+    assertThat(success.easyPayProvider()).isNull();
+    assertThat(success.methodDetail()).isEqualTo("카드");
     server.verify();
   }
 

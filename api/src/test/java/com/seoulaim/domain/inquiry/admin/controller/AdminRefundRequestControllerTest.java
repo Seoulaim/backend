@@ -17,6 +17,7 @@ import com.seoulaim.domain.inquiry.service.RefundRequestService;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
 import com.seoulaim.global.security.SecurityTestConfig;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -66,7 +67,9 @@ class AdminRefundRequestControllerTest {
         new AdminRefundRequestResponse.Payment(
             UUID.randomUUID(),
             "DIA-20261104-ABCDE12345",
-            3000L,
+            new BigDecimal("2.99"),
+            "PAYPAL",
+            "USD",
             "toss",
             Instant.parse("2026-11-04T03:00:00Z"),
             Instant.parse("2026-11-04T02:59:00Z"),
@@ -111,6 +114,9 @@ class AdminRefundRequestControllerTest {
         .andExpect(jsonPath("$[0].refund.exception").doesNotExist())
         .andExpect(jsonPath("$[0].payment.orderId").value("DIA-20261104-ABCDE12345"))
         .andExpect(jsonPath("$[0].payment.provider").value("toss"))
+        .andExpect(jsonPath("$[0].payment.method").value("PAYPAL"))
+        .andExpect(jsonPath("$[0].payment.currency").value("USD"))
+        .andExpect(jsonPath("$[0].payment.amount").value(2.99))
         .andExpect(jsonPath("$[0].payment.diary.first").value(false))
         .andExpect(jsonPath("$[0].payment.diary.pages").value(4))
         .andExpect(jsonPath("$[0].refundWithinPolicy").value(true))

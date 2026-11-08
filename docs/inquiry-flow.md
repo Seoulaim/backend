@@ -149,6 +149,8 @@ Help Center(MR03)에서 회원이 남긴 문의를 어드민이 이메일로 답
       "id": "019a4c30-...",
       "orderId": "DIA-20261104-ABCDE12345",
       "amount": 3000,
+      "method": "CARD",
+      "currency": "KRW",
       "provider": "toss",
       "paidAt": "2026-11-04T03:00:00Z",
       "refundConsentAt": "2026-11-04T02:59:30Z",
@@ -240,7 +242,9 @@ Help Center(MR03)에서 회원이 남긴 문의를 어드민이 이메일로 답
 
 서버 처리 순서 (한 트랜잭션):
 
-1. 토스 `POST /v1/payments/{paymentKey}/cancel { cancelReason }` (전액 취소)
+1. 토스 `POST /v1/payments/{paymentKey}/cancel { cancelReason }` (전액 취소). 결제한 상점(MID)의 키로 보낸다 — CARD 는 원화 MID, PAYPAL 은 외화 MID
+   - **PayPal 결제는 취소해도 토스 수수료가 환불되지 않는다** (회사 부담)
+   - 외화 MID 키가 빠진 서버에서 PayPal 결제를 승인하면 토스 호출 없이 `502 PAYMENT_REFUND_FAILED` (`fields.code: "MERCHANT_UNAVAILABLE"`)
    - 토스가 거절하면 `502 PAYMENT_REFUND_FAILED`, `fields` 에 토스 `code`/`message`. **결제·다이어리·문의 모두 그대로**라 다시 시도할 수 있다
    - 토스 통신 오류·5xx 도 `502 PAYMENT_REFUND_FAILED` (`fields.code: "GATEWAY_ERROR"`)
    - 토스에서 이미 취소된 결제(`ALREADY_CANCELED_PAYMENT`, 예: 타임아웃 뒤 재시도)는 환불 완료로 처리한다
@@ -249,7 +253,7 @@ Help Center(MR03)에서 회원이 남긴 문의를 어드민이 이메일로 답
    - 첫(무료) 다이어리: `paid=false` 만. 꾸민 내용은 남고, 앱은 무료 다이어리처럼 2쪽까지만 연다. 다시 결제하면 그대로 보인다
    - 두 번째 이후: soft delete (결제 내역에는 남고 이름·썸네일이 `null`). 사진 S3 삭제는 TODO
 4. 문의 `refund.status: refunded`, `status: answered`
-5. 커밋 후 "환불 완료" 메일 (문의 언어 en/ko/ja/zh, 제목 `[Seoulaim] Re: {문의 제목}`). 돈은 이미 돌려줬으므로 메일 실패는 로그만 남긴다
+5. 커밋 후 "환불 완료" 메일 (문의 언어 en/ko/ja/zh, 제목 `[Seoulaim] Re: {문의 제목}`). 돈은 이미 돌려줬으므로 메일 실패는 로그만 남긴다. 금액은 결제 통화로 적는다 (`KRW 3,000`, `USD 2.99`)
 
 ### 거절
 

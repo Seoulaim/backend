@@ -13,6 +13,7 @@ import com.seoulaim.domain.diary.dto.UserPaymentInfo;
 import com.seoulaim.domain.diary.entity.Diary;
 import com.seoulaim.domain.diary.entity.DiaryDownload;
 import com.seoulaim.domain.diary.entity.DiaryPayment;
+import com.seoulaim.domain.diary.entity.DiaryPaymentMethod;
 import com.seoulaim.domain.diary.entity.DiaryPaymentStatus;
 import com.seoulaim.domain.diary.repository.DiaryDownloadRepository;
 import com.seoulaim.domain.diary.repository.DiaryPaymentRepository;
@@ -21,19 +22,23 @@ import com.seoulaim.domain.diary.repository.UserCount;
 import com.seoulaim.domain.inquiry.service.RefundRequestQueryService;
 import com.seoulaim.domain.order.gateway.PaymentCancelResult;
 import com.seoulaim.domain.order.gateway.PaymentGateway;
+import com.seoulaim.domain.order.gateway.PaymentGatewayResolver;
 import com.seoulaim.domain.order.gateway.PaymentResult;
 import com.seoulaim.global.config.DiaryProperties;
 import com.seoulaim.global.config.TossPaymentProperties;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
+import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -44,7 +49,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 다이어리 결제. 토스 승인은 order 도메인의 {@link PaymentGateway} 구현(토스)을 그대로 쓴다. */
+/**
+ * 다이어리 결제. 토스 승인·취소는 order 도메인의 {@link PaymentGateway} 구현(토스)을 그대로 쓴다.
+ *
+ * <p>결제수단마다 토스 상점(MID)이 다르다: CARD → 원화 MID, PAYPAL → 외화 MID(USD). 승인·취소는 결제 행에 저장된 merchant 의
+ * 게이트웨이로 보낸다 ({@link PaymentGatewayResolver}).
+ */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -53,6 +63,8 @@ public class DiaryPaymentService {
   static final String ORDER_NAME = "Seoulaim Diary";
   // 네트워크 타임아웃 뒤 재시도처럼 토스에서는 이미 취소된 결제. 환불 완료로 본다
   static final String ALREADY_CANCELED_CODE = "ALREADY_CANCELED_PAYMENT";
+  static final String CARD_NAME = "Card";
+  static final String PAYPAL_NAME = "PayPal";
   private static final List<DiaryPaymentStatus> HISTORY_STATUSES =
       List.of(DiaryPaymentStatus.PAID, DiaryPaymentStatus.REFUNDED);
   private static final DateTimeFormatter ORDER_DATE_FORMAT =
@@ -65,7 +77,7 @@ public class DiaryPaymentService {
   private final DiaryRepository diaryRepository;
   private final DiaryPaymentRepository diaryPaymentRepository;
   private final DiaryDownloadRepository diaryDownloadRepository;
-  private final PaymentGateway paymentGateway;
+  private final PaymentGatewayResolver paymentGatewayResolver;
   private final RefundRequestQueryService refundRequestQueryService;
   private final DiaryProperties diaryProperties;
   private final TossPaymentProperties tossPaymentProperties;
@@ -76,10 +88,22 @@ public class DiaryPaymentService {
     if (diary.isPaid()) {
       throw new BusinessException(ErrorCode.PAYMENT_ALREADY_PAID);
     }
-    return DiaryCheckoutResponse.of(diary, diaryProperties.price());
+    List<DiaryCheckoutResponse.PaymentMethod> methods =
+        availableMethods().stream()
+            .map(
+                method ->
+                    new DiaryCheckoutResponse.PaymentMethod(
+                        method, methodName(method), method.currency(), priceOf(method)))
+            .toList();
+    return DiaryCheckoutResponse.of(diary, diaryProperties.price(), methods);
   }
 
-  /** 결제 대기 건을 만든다. 같은 다이어리의 이전 PENDING 결제는 FAILED 로 바꾼다. */
+  /**
+   * 결제 대기 건을 만든다. 같은 다이어리의 이전 PENDING 결제는 FAILED 로 바꾼다.
+   *
+   * <p>method 가 없으면 CARD. 모르는 값은 PAYMENT_INVALID_METHOD, 외화 MID 키가 없는데 PAYPAL 이면
+   * PAYMENT_METHOD_UNAVAILABLE.
+   */
   @Transactional
   public DiaryPaymentCreateResponse createPayment(
       UUID userId, UUID diaryId, DiaryPaymentCreateRequest request) {
@@ -90,26 +114,41 @@ public class DiaryPaymentService {
     if (diary.isPaid()) {
       throw new BusinessException(ErrorCode.PAYMENT_ALREADY_PAID);
     }
+    DiaryPaymentMethod method = parseMethod(request.method());
+    if (!paymentGatewayResolver.isAvailable(method.merchant())) {
+      throw new BusinessException(ErrorCode.PAYMENT_METHOD_UNAVAILABLE);
+    }
     diaryPaymentRepository
         .findAllByDiaryIdAndStatus(diary.getId(), DiaryPaymentStatus.PENDING)
         .forEach(DiaryPayment::supersede);
 
     Instant now = clock.instant();
-    long amount = diaryProperties.price();
     DiaryPayment payment =
         diaryPaymentRepository.save(
             DiaryPayment.createPending(
-                diary.getId(), userId, generateOrderNumber(now), amount, now));
+                diary.getId(), userId, generateOrderNumber(now), method, priceOf(method), now));
+    BigDecimal amount = payment.getAmount();
+    boolean paypal = method == DiaryPaymentMethod.PAYPAL;
+    TossPaymentProperties.Foreign foreign = tossPaymentProperties.foreign();
     return new DiaryPaymentCreateResponse(
         payment.getId(),
         payment.getOrderNumber(),
         amount,
         ORDER_NAME,
-        tossPaymentProperties.clientKey());
+        tossPaymentProperties.clientKey(),
+        method,
+        payment.getCurrency(),
+        amount,
+        paypal ? foreign.clientKey() : tossPaymentProperties.clientKey(),
+        paypal ? foreign.paypalVariantKey() : null,
+        // 토스 customerKey 규칙(2~50자, 영숫자·-_=.@, 특수문자 1개 이상): UUID 문자열 36자, '-' 포함
+        userId.toString());
   }
 
   /**
-   * 토스 결제 승인. 결제 행을 잠근 채 게이트웨이를 호출해 동시 요청이 두 번 승인하지 않게 한다.
+   * 토스 결제 승인. 결제 행을 잠근 채 결제 상점(merchant)의 게이트웨이를 호출해 동시 요청이 두 번 승인하지 않게 한다.
+   *
+   * <p>금액은 결제 통화의 소수 자릿수까지 비교한다 (USD 2.99 == "2.99" == 2.990, 2.999 는 불일치).
    *
    * <p>승인 실패 시 FAILED 를 저장한 뒤 PAYMENT_FAILED 를 던지므로 BusinessException 에는 롤백하지 않는다. 다른
    * BusinessException 경로(404, 금액 불일치, 게이트웨이 오류)는 그 전에 쓰기가 없다.
@@ -121,7 +160,7 @@ public class DiaryPaymentService {
         diaryPaymentRepository
             .findWithLockByIdAndUserId(paymentId, userId)
             .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
-    if (request.amount() != payment.getAmount()) {
+    if (!payment.getCurrency().sameAmount(payment.getAmount(), request.amount())) {
       throw new BusinessException(ErrorCode.PAYMENT_AMOUNT_MISMATCH);
     }
     if (payment.isPaid()) {
@@ -133,14 +172,16 @@ public class DiaryPaymentService {
     }
 
     PaymentResult result =
-        paymentGateway.confirm(request.paymentKey(), payment.getOrderNumber(), payment.getAmount());
+        paymentGatewayResolver
+            .forMerchant(payment.getMerchant())
+            .confirm(request.paymentKey(), payment.getOrderNumber(), payment.getAmount());
 
     switch (result) {
       case PaymentResult.Success success -> {
         payment.markPaid(
             success.paymentKey() == null ? request.paymentKey() : success.paymentKey(),
             success.approvedAt() == null ? clock.instant() : success.approvedAt(),
-            success.method());
+            success.methodDetail());
         diaryRepository
             .findById(payment.getDiaryId())
             .orElseThrow(() -> new BusinessException(ErrorCode.DIARY_NOT_FOUND))
@@ -256,8 +297,8 @@ public class DiaryPaymentService {
    *   <li>그 외: soft delete
    * </ul>
    *
-   * <p>토스가 취소를 거절하면 아무것도 바꾸지 않고 PAYMENT_REFUND_FAILED(fields 에 토스 code/message). 결제 행을 잠가 동시 승인이 두
-   * 번 취소하지 않게 한다.
+   * <p>취소는 결제 상점(merchant)의 게이트웨이로 보낸다 (전액 취소만). 토스가 취소를 거절하면 아무것도 바꾸지 않고
+   * PAYMENT_REFUND_FAILED(fields 에 토스 code/message). 결제 행을 잠가 동시 승인이 두 번 취소하지 않게 한다.
    */
   @Transactional
   public PaymentRefundInfo refund(UUID paymentId, String cancelReason) {
@@ -270,7 +311,19 @@ public class DiaryPaymentService {
           ErrorCode.PAYMENT_REFUND_FAILED,
           Map.of("code", "NOT_PAID", "message", "결제 완료(PAID) 상태가 아닙니다: " + payment.getStatus()));
     }
-    PaymentCancelResult result = paymentGateway.cancel(payment.getTossPaymentKey(), cancelReason);
+    if (!paymentGatewayResolver.isAvailable(payment.getMerchant())) {
+      throw new BusinessException(
+          ErrorCode.PAYMENT_REFUND_FAILED,
+          Map.of(
+              "code",
+              "MERCHANT_UNAVAILABLE",
+              "message",
+              "결제 상점(" + payment.getMerchant() + ") 키가 설정되지 않았습니다"));
+    }
+    PaymentCancelResult result =
+        paymentGatewayResolver
+            .forMerchant(payment.getMerchant())
+            .cancel(payment.getTossPaymentKey(), cancelReason);
     Instant now = clock.instant();
     switch (result) {
       case PaymentCancelResult.Success success ->
@@ -319,6 +372,39 @@ public class DiaryPaymentService {
                     downloads.getOrDefault(payment.getDiaryId(), List.of()),
                     now))
         .toList();
+  }
+
+  // 화면 노출 순서: CARD, PAYPAL. 키가 없는 상점의 수단은 뺀다
+  private List<DiaryPaymentMethod> availableMethods() {
+    return Arrays.stream(DiaryPaymentMethod.values())
+        .filter(method -> paymentGatewayResolver.isAvailable(method.merchant()))
+        .toList();
+  }
+
+  private BigDecimal priceOf(DiaryPaymentMethod method) {
+    return switch (method) {
+      case CARD -> BigDecimal.valueOf(diaryProperties.price());
+      case PAYPAL -> method.currency().normalize(diaryProperties.priceUsd());
+    };
+  }
+
+  private static String methodName(DiaryPaymentMethod method) {
+    return switch (method) {
+      case CARD -> CARD_NAME;
+      case PAYPAL -> PAYPAL_NAME;
+    };
+  }
+
+  private static DiaryPaymentMethod parseMethod(String method) {
+    if (method == null || method.isBlank()) {
+      return DiaryPaymentMethod.CARD;
+    }
+    try {
+      return DiaryPaymentMethod.valueOf(method.strip().toUpperCase(Locale.ROOT));
+    } catch (IllegalArgumentException exception) {
+      throw new BusinessException(
+          ErrorCode.PAYMENT_INVALID_METHOD, Map.of("method", "CARD | PAYPAL 중 하나여야 합니다"));
+    }
   }
 
   private static Map<UUID, Long> toCountMap(List<UserCount> counts) {
