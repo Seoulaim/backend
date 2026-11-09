@@ -67,9 +67,32 @@
 ## 2. 템플릿·스티커
 
 - `GET /api/v1/diary-templates` → `[{ id, name, description, imageKey, overlayImageKey, aspect, frames }]`
-- `GET /api/v1/diary-stickers` → `[{ id, name, imageKey }]`
+- `GET /api/v1/diary-stickers` → `{ categories:[{ id, name, displayOrder }], stickers:[{ id, name, imageKey, displayOrder, categoryIds }] }` (아래 "스티커 카테고리")
 
-활성 항목만 `displayOrder` 순으로 내려온다. `imageKey` 는 S3 key 이며 CDN 도메인 조합은 앱에서 한다.
+템플릿·스티커는 활성 항목만 `displayOrder` 순으로 내려온다. `imageKey` 는 S3 key 이며 CDN 도메인 조합은 앱에서 한다.
+
+### 스티커 카테고리 (#61)
+
+> **하위 호환 깨짐**: #61 전에는 `GET /diary-stickers` 가 배열 `[{ id, name, imageKey }]` 이었다. 지금은 객체이므로 배열로 읽던 클라이언트(`getEditorStickers`)는 `response.stickers` 를 읽도록 바꿔야 한다.
+
+```json
+{
+  "categories": [
+    { "id": "019a6d10-...", "name": "Cute", "displayOrder": 0 },
+    { "id": "019a6d11-...", "name": "Food", "displayOrder": 1 }
+  ],
+  "stickers": [
+    { "id": "019a4c00-...", "name": "heart", "imageKey": "diary_sticker/2026/11/019a4c00-....png",
+      "displayOrder": 0, "categoryIds": ["019a6d10-...", "019a6d11-..."] },
+    { "id": "019a4c01-...", "name": null, "imageKey": "diary_sticker/2026/11/019a4c01-....png",
+      "displayOrder": 1, "categoryIds": [] }
+  ]
+}
+```
+
+- `categories`: 어드민이 만든 카테고리 전체 (스티커가 없는 카테고리도 포함), `displayOrder` 순. "All" 탭은 앱이 붙인다
+- `stickers`: 활성 스티커만. 한 스티커가 여러 카테고리에 속할 수 있고, `categoryIds` 는 카테고리 순서대로. 어느 카테고리에도 없으면 `[]` (All 에만 보임)
+- 카테고리 이름은 문자열 하나 (다국어 아님)
 
 ### 템플릿 레이아웃 필드
 
@@ -109,8 +132,9 @@
 
 - `POST /api/v1/admin/diary-templates` `{ name, description?, imageFileId, displayOrder, isActive?, overlayFileId?, aspect?, frames? }` → 201
 - `PUT /api/v1/admin/diary-templates/{id}` 같은 바디 → 200
-- `POST /api/v1/admin/diary-stickers` `{ name?, imageFileId, displayOrder, isActive? }` → 201
+- `POST /api/v1/admin/diary-stickers` `{ name?, imageFileId, displayOrder, isActive?, categoryIds? }` → 201
 - `PUT /api/v1/admin/diary-stickers/{id}` 같은 바디 → 200
+- `GET /api/v1/admin/diary-stickers` → 비활성 포함 `[{ id, name, imageKey, displayOrder, isActive, categoryIds }]`
 
 | 필드 | 생성(POST) 에서 생략 | 수정(PUT) 에서 생략 |
 |---|---|---|
@@ -119,10 +143,26 @@
 | `aspect` | `1.4142857` | 기존 값 유지 |
 | `frames` | `[]` | 기존 값 유지 (보내면 전체 교체) |
 | `isActive` | `true` | 기존 값 유지 |
+| `categoryIds` (스티커) | 카테고리 없음 | 기존 연결 유지. `[]` 면 전부 해제, 보내면 전체 교체 |
 
 - `name`(템플릿 필수), `displayOrder`(필수), `description` 은 PUT 에서도 매번 보낸 값으로 덮어쓴다
 - `*FileId` 를 보내면 해당 파일을 LINKED 로 바꾸고 s3 key 를 저장한다. 없는 fileId 면 404 `FILE_NOT_FOUND`
 - 없는 템플릿·스티커를 수정하면 404 `DIARY_TEMPLATE_NOT_FOUND` / `DIARY_STICKER_NOT_FOUND`
+- `categoryIds` 에 없는 카테고리 id 가 하나라도 있으면 404 `DIARY_STICKER_CATEGORY_NOT_FOUND` (`fields.categoryIds` = 없는 id 들, 쉼표 구분). 중복 id 는 하나로 합친다
+
+### 어드민 스티커 카테고리 (`X-Admin-Key`)
+
+| 메서드·경로 | 바디 | 응답 |
+|---|---|---|
+| `GET /api/v1/admin/diary-sticker-categories` | | `[{ id, name, displayOrder, stickerCount }]` 순서대로. `stickerCount` 는 활성 스티커 수 |
+| `POST /api/v1/admin/diary-sticker-categories` | `{ name }` | 201 `{ id, name, displayOrder }` — 맨 뒤에 추가 |
+| `PUT /api/v1/admin/diary-sticker-categories/{id}` | `{ name }` | 200 `{ id, name, displayOrder }` |
+| `DELETE /api/v1/admin/diary-sticker-categories/{id}` | | 204 — 스티커와의 연결만 지우고 스티커는 남는다 |
+| `PUT /api/v1/admin/diary-sticker-categories/reorder` | `{ ids: [uuid] }` | 204 — `ids` 순서대로 앞에 두고, 빠진 카테고리는 기존 순서대로 뒤로 |
+
+- `name` 은 앞뒤 공백 제거 후 1~50자. 아니면 400 `DIARY_STICKER_CATEGORY_INVALID` (`fields.name`)
+- 없는 카테고리 수정·삭제 → 404 `DIARY_STICKER_CATEGORY_NOT_FOUND`
+- reorder 에 없는 id → 404 `DIARY_STICKER_CATEGORY_NOT_FOUND`, 중복 id → 400 `DIARY_STICKER_CATEGORY_INVALID`
 
 ## 3. 편집
 

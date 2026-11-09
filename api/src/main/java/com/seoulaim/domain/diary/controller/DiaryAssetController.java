@@ -1,6 +1,6 @@
 package com.seoulaim.domain.diary.controller;
 
-import com.seoulaim.domain.diary.dto.DiaryStickerResponse;
+import com.seoulaim.domain.diary.dto.DiaryEditorStickersResponse;
 import com.seoulaim.domain.diary.dto.DiaryTemplateResponse;
 import com.seoulaim.domain.diary.service.DiaryAssetService;
 import com.seoulaim.global.common.CurrentUserId;
@@ -30,10 +30,11 @@ public class DiaryAssetController {
     return diaryAssetService.getActiveTemplates();
   }
 
-  @Operation(summary = "다이어리 스티커 목록 (활성만, 노출 순서)")
+  // #61 에서 배열 → { categories, stickers } 객체로 바뀜 (하위 호환 없음)
+  @Operation(summary = "다이어리 스티커 카테고리·스티커 목록 (스티커는 활성만, 둘 다 노출 순서)")
   @GetMapping("/diary-stickers")
-  public List<DiaryStickerResponse> getStickers(
+  public DiaryEditorStickersResponse getStickers(
       @Parameter(hidden = true) @CurrentUserId UUID userId) {
-    return diaryAssetService.getActiveStickers();
+    return diaryAssetService.getEditorStickers();
   }
 }
