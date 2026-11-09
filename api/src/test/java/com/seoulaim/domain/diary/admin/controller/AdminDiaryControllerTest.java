@@ -3,17 +3,24 @@ package com.seoulaim.domain.diary.admin.controller;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.seoulaim.domain.diary.admin.dto.AdminDiaryStickerCategoryListResponse;
+import com.seoulaim.domain.diary.admin.dto.AdminDiaryStickerCategoryResponse;
 import com.seoulaim.domain.diary.admin.dto.AdminDiarySummaryResponse;
 import com.seoulaim.domain.diary.admin.dto.AdminDiaryTemplateResponse;
 import com.seoulaim.domain.diary.entity.Diary;
 import com.seoulaim.domain.diary.entity.TemplateFrame;
 import com.seoulaim.domain.diary.service.DiaryAssetService;
 import com.seoulaim.domain.diary.service.DiaryService;
+import com.seoulaim.domain.diary.service.DiaryStickerCategoryService;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
 import com.seoulaim.global.security.SecurityTestConfig;
@@ -39,6 +46,7 @@ class AdminDiaryControllerTest {
   @Autowired private MockMvc mockMvc;
   @MockitoBean private DiaryAssetService diaryAssetService;
   @MockitoBean private DiaryService diaryService;
+  @MockitoBean private DiaryStickerCategoryService diaryStickerCategoryService;
 
   @Test
   @DisplayName("imageFileId 없이 템플릿을 수정해도 검증을 통과하고 200 과 레이아웃 필드를 반환한다")
@@ -127,5 +135,102 @@ class AdminDiaryControllerTest {
         .andExpect(jsonPath("$[0].free").value(true))
         .andExpect(jsonPath("$[0].paid").value(false))
         .andExpect(jsonPath("$[0].status").value("DRAFT"));
+  }
+
+  @Test
+  @DisplayName("스티커 카테고리 목록은 노출 순서대로 stickerCount 와 함께 반환한다")
+  void getStickerCategories_정상_목록반환() throws Exception {
+    UUID categoryId = UUID.randomUUID();
+    given(diaryStickerCategoryService.getCategories())
+        .willReturn(List.of(new AdminDiaryStickerCategoryListResponse(categoryId, "Cute", 0, 3)));
+
+    mockMvc
+        .perform(get("/api/v1/admin/diary-sticker-categories").header("X-Admin-Key", ADMIN_KEY))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].id").value(categoryId.toString()))
+        .andExpect(jsonPath("$[0].name").value("Cute"))
+        .andExpect(jsonPath("$[0].displayOrder").value(0))
+        .andExpect(jsonPath("$[0].stickerCount").value(3));
+  }
+
+  @Test
+  @DisplayName("스티커 카테고리를 등록하면 201 과 id·name·displayOrder 를 반환한다")
+  void createStickerCategory_정상_201반환() throws Exception {
+    UUID categoryId = UUID.randomUUID();
+    given(diaryStickerCategoryService.createCategory("Cute"))
+        .willReturn(new AdminDiaryStickerCategoryResponse(categoryId, "Cute", 2));
+
+    mockMvc
+        .perform(
+            post("/api/v1/admin/diary-sticker-categories")
+                .header("X-Admin-Key", ADMIN_KEY)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"name": "Cute"}
+                    """))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.id").value(categoryId.toString()))
+        .andExpect(jsonPath("$.displayOrder").value(2));
+  }
+
+  @Test
+  @DisplayName("카테고리 이름이 비어 있으면 400 DIARY_STICKER_CATEGORY_INVALID 를 반환한다")
+  void createStickerCategory_이름공백_400반환() throws Exception {
+    given(diaryStickerCategoryService.createCategory(any()))
+        .willThrow(new BusinessException(ErrorCode.DIARY_STICKER_CATEGORY_INVALID));
+
+    mockMvc
+        .perform(
+            post("/api/v1/admin/diary-sticker-categories")
+                .header("X-Admin-Key", ADMIN_KEY)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"name": "  "}
+                    """))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("DIARY_STICKER_CATEGORY_INVALID"));
+  }
+
+  @Test
+  @DisplayName("reorder 는 {id} 경로가 아니라 순서 변경으로 처리되고 204 를 반환한다")
+  void reorderStickerCategories_정상_204반환() throws Exception {
+    UUID first = UUID.randomUUID();
+    UUID second = UUID.randomUUID();
+
+    mockMvc
+        .perform(
+            put("/api/v1/admin/diary-sticker-categories/reorder")
+                .header("X-Admin-Key", ADMIN_KEY)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"ids\": [\"" + first + "\", \"" + second + "\"]}"))
+        .andExpect(status().isNoContent());
+
+    verify(diaryStickerCategoryService).reorderCategories(List.of(first, second));
+  }
+
+  @Test
+  @DisplayName("없는 카테고리를 삭제하면 404 DIARY_STICKER_CATEGORY_NOT_FOUND 를 반환한다")
+  void deleteStickerCategory_없는카테고리_404반환() throws Exception {
+    UUID categoryId = UUID.randomUUID();
+    willThrow(new BusinessException(ErrorCode.DIARY_STICKER_CATEGORY_NOT_FOUND))
+        .given(diaryStickerCategoryService)
+        .deleteCategory(categoryId);
+
+    mockMvc
+        .perform(
+            delete("/api/v1/admin/diary-sticker-categories/{id}", categoryId)
+                .header("X-Admin-Key", ADMIN_KEY))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("DIARY_STICKER_CATEGORY_NOT_FOUND"));
+  }
+
+  @Test
+  @DisplayName("X-Admin-Key 없이 카테고리 API 를 호출하면 403 을 반환한다")
+  void getStickerCategories_관리자키없음_403반환() throws Exception {
+    mockMvc
+        .perform(get("/api/v1/admin/diary-sticker-categories"))
+        .andExpect(status().isForbidden());
   }
 }
