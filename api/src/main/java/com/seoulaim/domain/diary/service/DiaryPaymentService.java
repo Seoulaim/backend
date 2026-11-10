@@ -46,6 +46,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -81,6 +82,7 @@ public class DiaryPaymentService {
   private final RefundRequestQueryService refundRequestQueryService;
   private final DiaryProperties diaryProperties;
   private final TossPaymentProperties tossPaymentProperties;
+  private final ApplicationEventPublisher eventPublisher;
   private final Clock clock;
 
   public DiaryCheckoutResponse getCheckout(UUID userId, UUID diaryId) {
@@ -150,6 +152,8 @@ public class DiaryPaymentService {
    *
    * <p>금액은 결제 통화의 소수 자릿수까지 비교한다 (USD 2.99 == "2.99" == 2.990, 2.999 는 불일치).
    *
+   * <p>승인 성공(PENDING → PAID) 시에만 결제 완료 메일 이벤트를 발행한다. 이미 PAID 인 중복 승인은 다시 보내지 않는다.
+   *
    * <p>승인 실패 시 FAILED 를 저장한 뒤 PAYMENT_FAILED 를 던지므로 BusinessException 에는 롤백하지 않는다. 다른
    * BusinessException 경로(404, 금액 불일치, 게이트웨이 오류)는 그 전에 쓰기가 없다.
    */
@@ -182,10 +186,23 @@ public class DiaryPaymentService {
             success.paymentKey() == null ? request.paymentKey() : success.paymentKey(),
             success.approvedAt() == null ? clock.instant() : success.approvedAt(),
             success.methodDetail());
-        diaryRepository
-            .findById(payment.getDiaryId())
-            .orElseThrow(() -> new BusinessException(ErrorCode.DIARY_NOT_FOUND))
-            .markPaid();
+        Diary diary =
+            diaryRepository
+                .findById(payment.getDiaryId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.DIARY_NOT_FOUND));
+        diary.markPaid();
+        // 결제 완료 메일은 커밋 후 발송 (PaymentPaidMailListener). 실패해도 응답에 영향 없음
+        eventPublisher.publishEvent(
+            new DiaryPaymentPaidEvent(
+                payment.getId(),
+                payment.getUserId(),
+                new PaymentPaidMails.Content(
+                    diary.getName(),
+                    payment.getOrderNumber(),
+                    payment.getMethod(),
+                    payment.getCurrency(),
+                    payment.getAmount(),
+                    payment.getPaidAt())));
         return new DiaryPaymentConfirmResponse(payment.getDiaryId());
       }
       case PaymentResult.Failure failure -> {

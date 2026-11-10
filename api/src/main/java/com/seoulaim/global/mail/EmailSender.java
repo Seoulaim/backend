@@ -12,4 +12,13 @@ package com.seoulaim.global.mail;
 public interface EmailSender {
 
   void send(String to, String subject, String text);
+
+  /**
+   * 텍스트와 HTML 을 함께 보낸다 (multipart/alternative). 메일 클라이언트가 HTML 을 못 보이면 텍스트가 보인다.
+   *
+   * <p>기본 구현은 HTML 없이 텍스트만 보낸다.
+   */
+  default void send(String to, String subject, String text, String html) {
+    send(to, subject, text);
+  }
 }

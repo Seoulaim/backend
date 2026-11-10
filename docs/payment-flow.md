@@ -336,3 +336,50 @@ PAYPAL 은 결제위젯 v2 로 띄운다 (7절).
 - 결제위젯 키(`*_gck_`)는 결제창 SDK(`payment()`)에 쓸 수 없고, 원화 키는 위젯에 쓸 수 없다. 수단별 `clientKey` 를 그대로 쓴다
 - `variantKey` 는 토스 상점관리자의 결제 UI 설정과 같아야 한다
 
+
+## 8. 결제 완료 메일 — #64
+
+`POST /api/v1/payments/{orderId}/confirm` 이 **처음 PAID 가 될 때만** 회원에게 결제 완료 메일을 보낸다. 앱은 따로 호출할 것이 없다.
+
+- 발송 시점: confirm 트랜잭션 **커밋 후** (`DiaryPaymentPaidEvent` → `PaymentPaidMailListener`, `@TransactionalEventListener(AFTER_COMMIT)`). 환불 완료 메일과 같은 방식
+- 실패: 회원 조회·메일 발송이 실패해도 로그만 남기고 confirm 응답(200)은 그대로
+- 중복 confirm(이미 PAID) · 토스 승인 실패(402) · 금액 불일치(400) 에는 보내지 않음
+- 수신: 결제 회원의 계정 이메일. 탈퇴 등으로 이메일이 없으면 생략(warn 로그)
+- 언어: `users.locale` (en|ko|ja|zh). 그 밖의 값은 en
+- 형식: 텍스트 + 간단한 HTML (multipart/alternative, `EmailSender.send(to, subject, text, html)`). local 프로파일은 `LoggingEmailSender` 가 텍스트·HTML 을 로그로 출력
+
+| 언어 | 제목 |
+|---|---|
+| en | `[Seoulaim] Payment confirmed – {다이어리 이름}` |
+| ko | `[Seoulaim] 결제 완료 – {다이어리 이름}` |
+| ja | `[Seoulaim] お支払い完了 – {다이어리 이름}` |
+| zh | `[Seoulaim] 付款成功 – {다이어리 이름}` |
+
+본문 항목: 다이어리 이름, 주문번호(`DIA-...`), 결제 수단(`Card` / `PayPal`), 금액(`KRW 3,000` / `USD 2.99`), 결제 일시(`2026-11-10 14:30 (KST) / 2026-11-10 05:30 (UTC)`), 환불 안내 3줄, 결제 내역·Help Center 링크.
+
+링크는 `app.web.base-url`(env `WEB_BASE_URL`, 기본 `https://seoulaim.com`) + 회원 웹앱 라우트:
+
+- 결제 내역: `/mypage/payments`
+- Help Center(문의): `/mypage/inquiry`
+
+예시 (ko, 텍스트):
+
+```
+결제가 완료되었어요. 감사합니다!
+
+- 다이어리: My Diary
+- 주문번호: DIA-20261110-ABCDE12345
+- 결제 수단: Card
+- 금액: KRW 3,000
+- 결제 일시: 2026-11-10 14:30 (KST) / 2026-11-10 05:30 (UTC)
+
+환불 안내
+- 결제 후 7일 이내이고 다이어리를 편집하기 전이라면 Help Center 에서 환불을 요청할 수 있어요.
+- 결제 후 편집을 시작했거나 "Done"으로 완성한 다이어리는 환불되지 않아요.
+- 결제일로부터 7일이 지나면 환불되지 않아요.
+
+결제 내역: https://seoulaim.com/mypage/payments
+Help Center: https://seoulaim.com/mypage/inquiry
+
+Seoulaim
+```

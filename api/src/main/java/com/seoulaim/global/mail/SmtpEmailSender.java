@@ -2,6 +2,9 @@ package com.seoulaim.global.mail;
 
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
+import java.nio.charset.StandardCharsets;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -10,6 +13,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.mail.MailException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -35,11 +39,7 @@ public class SmtpEmailSender implements EmailSender {
 
   @Override
   public void send(String to, String subject, String text) {
-    JavaMailSender mailSender = mailSenderProvider.getIfAvailable();
-    if (mailSender == null) {
-      log.error("JavaMailSender 없음 → spring.mail.host 설정 확인");
-      throw new BusinessException(ErrorCode.AUTH_MAIL_SEND_FAILED);
-    }
+    JavaMailSender mailSender = requireMailSender();
 
     SimpleMailMessage message = new SimpleMailMessage();
     if (StringUtils.hasText(from)) {
@@ -55,5 +55,34 @@ public class SmtpEmailSender implements EmailSender {
       log.error("메일 발송 실패 to={}", to, exception);
       throw new BusinessException(ErrorCode.AUTH_MAIL_SEND_FAILED);
     }
+  }
+
+  @Override
+  public void send(String to, String subject, String text, String html) {
+    JavaMailSender mailSender = requireMailSender();
+    try {
+      MimeMessage message = mailSender.createMimeMessage();
+      MimeMessageHelper helper =
+          new MimeMessageHelper(message, true, StandardCharsets.UTF_8.name());
+      if (StringUtils.hasText(from)) {
+        helper.setFrom(from);
+      }
+      helper.setTo(to);
+      helper.setSubject(subject);
+      helper.setText(text, html);
+      mailSender.send(message);
+    } catch (MessagingException | MailException exception) {
+      log.error("메일 발송 실패 to={}", to, exception);
+      throw new BusinessException(ErrorCode.AUTH_MAIL_SEND_FAILED);
+    }
+  }
+
+  private JavaMailSender requireMailSender() {
+    JavaMailSender mailSender = mailSenderProvider.getIfAvailable();
+    if (mailSender == null) {
+      log.error("JavaMailSender 없음 → spring.mail.host 설정 확인");
+      throw new BusinessException(ErrorCode.AUTH_MAIL_SEND_FAILED);
+    }
+    return mailSender;
   }
 }

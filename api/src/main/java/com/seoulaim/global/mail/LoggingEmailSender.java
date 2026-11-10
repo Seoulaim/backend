@@ -14,4 +14,9 @@ public class LoggingEmailSender implements EmailSender {
   public void send(String to, String subject, String text) {
     log.info("[메일 발송 생략] to={}, subject={}\n{}", to, subject, text);
   }
+
+  @Override
+  public void send(String to, String subject, String text, String html) {
+    log.info("[메일 발송 생략] to={}, subject={}\n{}\n--- html ---\n{}", to, subject, text, html);
+  }
 }
