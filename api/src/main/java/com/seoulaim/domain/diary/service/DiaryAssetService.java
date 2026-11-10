@@ -8,6 +8,7 @@ import com.seoulaim.domain.diary.dto.DiaryEditorStickersResponse;
 import com.seoulaim.domain.diary.dto.DiaryStickerCategoryResponse;
 import com.seoulaim.domain.diary.dto.DiaryStickerResponse;
 import com.seoulaim.domain.diary.dto.DiaryTemplateResponse;
+import com.seoulaim.domain.diary.dto.DiaryUsedTemplateResponse;
 import com.seoulaim.domain.diary.entity.DiarySticker;
 import com.seoulaim.domain.diary.entity.DiaryStickerCategory;
 import com.seoulaim.domain.diary.entity.DiaryTemplate;
@@ -61,14 +62,14 @@ public class DiaryAssetService {
   }
 
   /** 주어진 id 중 비활성 템플릿만. 편집 중인 다이어리가 이미 쓰고 있는 템플릿을 계속 보여주기 위해 쓴다. */
-  public List<DiaryTemplateResponse> getInactiveTemplates(Collection<UUID> templateIds) {
+  public List<DiaryUsedTemplateResponse> getInactiveTemplates(Collection<UUID> templateIds) {
     if (templateIds.isEmpty()) {
       return List.of();
     }
     return diaryTemplateRepository
         .findAllByIdInAndIsActiveFalseOrderByDisplayOrderAscIdAsc(templateIds)
         .stream()
-        .map(DiaryTemplateResponse::from)
+        .map(DiaryUsedTemplateResponse::from)
         .toList();
   }
 

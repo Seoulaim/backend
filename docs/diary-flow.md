@@ -181,7 +181,7 @@
 ```
 
 - `spreads`, `placePhotos` 는 마지막으로 저장한 값 그대로다
-- `usedTemplates`: `spreads` 안의 `templateId` 중 **어드민이 비활성화한 템플릿**. 활성 목록 API 에는 안 나오므로 기존 편집 내용을 그리려면 이 값을 함께 쓴다. 형태는 `GET /diary-templates` 원소와 같다. 서버는 `spreads` 의 깊이와 무관하게 `"templateId"` 필드(UUID 문자열)를 모두 찾는다
+- `usedTemplates`: `spreads` 안의 `templateId` 중 **어드민이 비활성화한 템플릿**. 활성 목록 API 에는 안 나오므로 기존 편집 내용을 그리려면 이 값을 함께 쓴다. 형태는 `GET /diary-templates` 원소 + `isActive`(항상 false) 이다. 서버는 `spreads` 의 깊이와 무관하게 `"templateId"` 필드(UUID 문자열)를 모두 찾는다
 - `pageKeys`: 완성 페이지 등록 후에만 값이 있다
 
 ### 사진 업로드

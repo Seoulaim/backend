@@ -16,9 +16,12 @@ import com.seoulaim.domain.diary.dto.DiaryEditorResponse;
 import com.seoulaim.domain.diary.dto.DiaryFinishedPagesRequest;
 import com.seoulaim.domain.diary.dto.DiaryFinishedPagesResponse;
 import com.seoulaim.domain.diary.dto.DiarySpreadsRequest;
+import com.seoulaim.domain.diary.dto.DiaryUsedTemplateResponse;
 import com.seoulaim.domain.diary.entity.Diary;
 import com.seoulaim.domain.diary.entity.DiaryDownload;
 import com.seoulaim.domain.diary.entity.DiaryDownloadFormat;
+import com.seoulaim.domain.diary.entity.DiaryTemplate;
+import com.seoulaim.domain.diary.entity.TemplateFrame;
 import com.seoulaim.domain.diary.repository.DiaryDownloadRepository;
 import com.seoulaim.domain.diary.repository.DiaryRepository;
 import com.seoulaim.domain.file.dto.FileDetail;
@@ -461,5 +464,44 @@ class DiaryServiceTest {
     assertThat(response.diary().finalized()).isFalse();
     assertThat(response.pageKeys()).isNull();
     assertThat(response.usedTemplates()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("비활성 템플릿을 쓴 다이어리의 편집 화면 응답 usedTemplates 에 그 템플릿 전체 정보가 포함된다")
+  void getEditor_비활성템플릿사용_usedTemplates포함() throws Exception {
+    DiaryTemplate hidden =
+        DiaryTemplate.create(
+            "Hidden",
+            "숨긴 템플릿",
+            "diary_template/2026/11/bg.png",
+            "diary_template/2026/11/overlay.png",
+            0.75,
+            List.of(new TemplateFrame("photo-1", 0.1, 0.1, 0.8, 0.4, 0)),
+            0,
+            false);
+    Diary diary = Diary.create(USER_ID, true);
+    JsonNode spreads =
+        objectMapper.readTree("[{\"templateId\": \"%s\"}]".formatted(hidden.getId()));
+    diary.saveSpreads(objectMapper.convertValue(spreads, List.class), Map.of(), 0, NOW);
+    givenMyDiary(diary);
+    given(diaryAssetService.getInactiveTemplates(Set.of(hidden.getId())))
+        .willReturn(List.of(DiaryUsedTemplateResponse.from(hidden)));
+
+    DiaryEditorResponse response = diaryService.getEditor(USER_ID, diary.getId());
+
+    assertThat(response.usedTemplates())
+        .singleElement()
+        .satisfies(
+            t -> {
+              assertThat(t.id()).isEqualTo(hidden.getId());
+              assertThat(t.name()).isEqualTo("Hidden");
+              assertThat(t.imageKey()).isEqualTo("diary_template/2026/11/bg.png");
+              assertThat(t.overlayImageKey()).isEqualTo("diary_template/2026/11/overlay.png");
+              assertThat(t.aspect()).isEqualTo(0.75);
+              assertThat(t.frames()).hasSize(1);
+              assertThat(t.isActive()).isFalse();
+            });
+    JsonNode json = objectMapper.valueToTree(response.usedTemplates().get(0));
+    assertThat(json.get("isActive").asBoolean(true)).isFalse();
   }
 }
