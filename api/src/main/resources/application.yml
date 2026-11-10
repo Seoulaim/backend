@@ -28,6 +28,9 @@ app:
   admin:
     # 관리자 API 임시 인증 키 (X-Admin-Key)
     key: ${ADMIN_KEY}
+  web:
+    # 회원 웹앱 주소. 메일 본문 링크(결제 내역·Help Center)에 쓴다
+    base-url: ${WEB_BASE_URL:https://seoulaim.com}
   cors:
     # 웹 클라이언트 origin, 쉼표로 구분 (기본값: 로컬 React 개발 서버)
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}

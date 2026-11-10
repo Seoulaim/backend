@@ -57,6 +57,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -83,6 +84,7 @@ class DiaryPaymentServiceTest {
   // 외화 MID (PayPal)
   @Mock private PaymentGateway foreignGateway;
   @Mock private RefundRequestQueryService refundRequestQueryService;
+  @Mock private ApplicationEventPublisher eventPublisher;
 
   private DiaryPaymentService diaryPaymentService;
 
@@ -103,6 +105,7 @@ class DiaryPaymentServiceTest {
         refundRequestQueryService,
         new DiaryProperties(PRICE, 2, USD_AMOUNT),
         tossProperties,
+        eventPublisher,
         Clock.fixed(NOW, ZoneOffset.UTC));
   }
 
@@ -275,6 +278,66 @@ class DiaryPaymentServiceTest {
 
     assertThat(response.diaryId()).isEqualTo(diary.getId());
     verify(paymentGateway, never()).confirm(anyString(), anyString(), any(BigDecimal.class));
+  }
+
+  @Test
+  @DisplayName("승인 성공 시 결제 완료 메일 이벤트를 1번 발행한다 (다이어리 이름·주문번호·수단·금액·결제 시각)")
+  void confirm_성공_메일이벤트1회() {
+    Diary diary = Diary.create(USER_ID, false);
+    DiaryPayment payment = givenLockedPayment(diary);
+    given(diaryRepository.findById(diary.getId())).willReturn(Optional.of(diary));
+    Instant approvedAt = NOW.minusSeconds(5);
+    given(paymentGateway.confirm("pk_1", payment.getOrderNumber(), KRW_AMOUNT))
+        .willReturn(PaymentResult.success("pk_1", "카드", approvedAt, "{}"));
+
+    diaryPaymentService.confirm(
+        USER_ID, payment.getId(), new DiaryPaymentConfirmRequest("pk_1", KRW_AMOUNT));
+
+    ArgumentCaptor<DiaryPaymentPaidEvent> captor =
+        ArgumentCaptor.forClass(DiaryPaymentPaidEvent.class);
+    verify(eventPublisher).publishEvent(captor.capture());
+    DiaryPaymentPaidEvent event = captor.getValue();
+    assertThat(event.paymentId()).isEqualTo(payment.getId());
+    assertThat(event.userId()).isEqualTo(USER_ID);
+    assertThat(event.content())
+        .isEqualTo(
+            new PaymentPaidMails.Content(
+                diary.getName(),
+                payment.getOrderNumber(),
+                DiaryPaymentMethod.CARD,
+                PaymentCurrency.KRW,
+                KRW_AMOUNT,
+                approvedAt));
+  }
+
+  @Test
+  @DisplayName("승인 실패(토스 거절) 시 결제 완료 메일 이벤트를 발행하지 않는다")
+  void confirm_토스실패_메일없음() {
+    Diary diary = Diary.create(USER_ID, false);
+    DiaryPayment payment = givenLockedPayment(diary);
+    given(paymentGateway.confirm("pk_1", payment.getOrderNumber(), KRW_AMOUNT))
+        .willReturn(PaymentResult.failure("REJECT_CARD_COMPANY", "카드사 거절", "{}"));
+
+    assertThatThrownBy(
+            () ->
+                diaryPaymentService.confirm(
+                    USER_ID, payment.getId(), new DiaryPaymentConfirmRequest("pk_1", KRW_AMOUNT)))
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.PAYMENT_FAILED);
+    verify(eventPublisher, never()).publishEvent(any());
+  }
+
+  @Test
+  @DisplayName("이미 PAID 인 결제에 다시 승인 요청하면 결제 완료 메일 이벤트를 다시 발행하지 않는다")
+  void confirm_중복승인_메일없음() {
+    Diary diary = Diary.create(USER_ID, false);
+    DiaryPayment payment = givenLockedPayment(diary);
+    payment.markPaid("pk_1", NOW);
+
+    diaryPaymentService.confirm(
+        USER_ID, payment.getId(), new DiaryPaymentConfirmRequest("pk_1", KRW_AMOUNT));
+
+    verify(eventPublisher, never()).publishEvent(any());
   }
 
   @Test
