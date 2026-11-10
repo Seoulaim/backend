@@ -13,6 +13,7 @@ import com.seoulaim.domain.diary.admin.dto.AdminDiaryStickerResponse;
 import com.seoulaim.domain.diary.admin.dto.AdminDiaryTemplateRequest;
 import com.seoulaim.domain.diary.admin.dto.AdminDiaryTemplateResponse;
 import com.seoulaim.domain.diary.dto.DiaryEditorStickersResponse;
+import com.seoulaim.domain.diary.dto.DiaryUsedTemplateResponse;
 import com.seoulaim.domain.diary.entity.DiarySticker;
 import com.seoulaim.domain.diary.entity.DiaryStickerCategory;
 import com.seoulaim.domain.diary.entity.DiaryTemplate;
@@ -345,5 +346,24 @@ class DiaryAssetServiceTest {
     assertThat(response.stickers().get(0).categoryIds())
         .containsExactly(cute.getId(), food.getId());
     assertThat(response.stickers().get(1).categoryIds()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("편집기용 비활성 템플릿 조회는 이미지·레이아웃·isActive=false 까지 전체 정보를 돌려준다")
+  void getInactiveTemplates_비활성_전체정보() {
+    DiaryTemplate hidden =
+        DiaryTemplate.create("Hidden", null, IMAGE_KEY, OVERLAY_KEY, 0.75, FRAMES, 0, false);
+    given(
+            diaryTemplateRepository.findAllByIdInAndIsActiveFalseOrderByDisplayOrderAscIdAsc(
+                List.of(hidden.getId())))
+        .willReturn(List.of(hidden));
+
+    List<DiaryUsedTemplateResponse> result =
+        diaryAssetService.getInactiveTemplates(List.of(hidden.getId()));
+
+    assertThat(result)
+        .containsExactly(
+            new DiaryUsedTemplateResponse(
+                hidden.getId(), "Hidden", null, IMAGE_KEY, OVERLAY_KEY, 0.75, FRAMES, false));
   }
 }
