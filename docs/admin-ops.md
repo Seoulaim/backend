@@ -209,6 +209,10 @@
 - `reason` 1~200자(앞뒤 공백 제거) 아니면 `400 COMMON_INVALID_REQUEST`. 없는 회원 `404 USER_NOT_FOUND`, 이미 탈퇴 `409 USER_ALREADY_WITHDRAWN`
 - 강퇴 안내 메일은 보내지 않는다 (아래 "아직 없는 것")
 
+## 3. 장소 관리
+
+- `PATCH /admin/places/{id}/visible { visible }` → 어드민 장소 상세. 노출 여부만 바꾸고 다른 필드는 검증하지 않는다 (전체 `PUT` 은 `summary.en`·`address.en` 필수라 노출 토글에 쓰지 않는다). 없는 장소 `404 PLACE_NOT_FOUND`
+
 ## 에러 코드
 
 | code | HTTP | 언제 |
