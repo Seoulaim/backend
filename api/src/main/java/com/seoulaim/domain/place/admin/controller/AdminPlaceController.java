@@ -4,6 +4,7 @@ import com.seoulaim.domain.place.admin.dto.AdminPlaceDetailResponse;
 import com.seoulaim.domain.place.admin.dto.AdminPlaceListRequest;
 import com.seoulaim.domain.place.admin.dto.AdminPlaceListResponse;
 import com.seoulaim.domain.place.admin.dto.AdminPlaceRequest;
+import com.seoulaim.domain.place.admin.dto.AdminPlaceVisibilityRequest;
 import com.seoulaim.domain.place.service.AdminPlaceService;
 import com.seoulaim.global.config.SwaggerConfig;
 import io.swagger.v3.oas.annotations.Operation;
@@ -19,6 +20,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -63,6 +65,13 @@ public class AdminPlaceController {
   public AdminPlaceDetailResponse updatePlace(
       @PathVariable UUID placeId, @Valid @RequestBody AdminPlaceRequest request) {
     return adminPlaceService.updatePlace(placeId, request);
+  }
+
+  @Operation(summary = "[관리자] 장소 노출 여부 변경 (다른 필드 검증 없음)")
+  @PatchMapping("/{placeId}/visible")
+  public AdminPlaceDetailResponse changeVisibility(
+      @PathVariable UUID placeId, @Valid @RequestBody AdminPlaceVisibilityRequest request) {
+    return adminPlaceService.changeVisibility(placeId, request.visible());
   }
 
   @Operation(summary = "[관리자] 장소 삭제 (일정에 포함된 장소는 409, 숨김 처리 권장)")

@@ -172,6 +172,16 @@ public class AdminPlaceService {
     return toDetail(place);
   }
 
+  // 노출 토글. 전체 PUT 과 달리 다른 필드(영어 요약·주소 등)를 검증하지 않는다
+  @Transactional
+  public AdminPlaceDetailResponse changeVisibility(UUID placeId, boolean visible) {
+    Place place = findPlace(placeId);
+    place.changeVisibility(visible);
+    // updatedAt 반영 후 응답
+    placeRepository.flush();
+    return toDetail(place);
+  }
+
   @Transactional
   public void deletePlace(UUID placeId) {
     Place place = findPlace(placeId);
