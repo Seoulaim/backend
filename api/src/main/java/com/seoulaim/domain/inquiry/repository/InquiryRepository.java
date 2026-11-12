@@ -2,12 +2,14 @@ package com.seoulaim.domain.inquiry.repository;
 
 import com.seoulaim.domain.inquiry.entity.Inquiry;
 import com.seoulaim.domain.inquiry.entity.InquiryCategory;
+import com.seoulaim.domain.inquiry.entity.InquiryStatus;
 import com.seoulaim.domain.inquiry.entity.RefundStatus;
 import jakarta.persistence.LockModeType;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -51,4 +53,17 @@ public interface InquiryRepository extends JpaRepository<Inquiry, UUID> {
       group by i.userId, i.status, i.refundStatus
       """)
   List<UserInquiryCount> countByUserIds(Collection<UUID> userIds);
+
+  // 대시보드 ---------------------------------------------------------------
+
+  List<Inquiry> findAllByCategoryNotOrderByCreatedAtDescIdDesc(
+      InquiryCategory category, Limit limit);
+
+  List<Inquiry> findAllByCategoryOrderByCreatedAtDescIdDesc(InquiryCategory category, Limit limit);
+
+  List<Inquiry> findAllByCategoryNotAndStatusOrderByCreatedAtDescIdDesc(
+      InquiryCategory category, InquiryStatus status);
+
+  List<Inquiry> findAllByCategoryAndRefundStatusOrderByCreatedAtDescIdDesc(
+      InquiryCategory category, RefundStatus refundStatus);
 }

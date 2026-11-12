@@ -3,14 +3,17 @@ package com.seoulaim.domain.diary.service;
 import com.seoulaim.domain.diary.admin.dto.AdminPaymentDetailResponse;
 import com.seoulaim.domain.diary.admin.dto.AdminPaymentPageResponse;
 import com.seoulaim.domain.diary.admin.dto.AdminPaymentResponse;
+import com.seoulaim.domain.diary.dto.PaymentDailyStat;
 import com.seoulaim.domain.diary.entity.Diary;
 import com.seoulaim.domain.diary.entity.DiaryPayment;
+import com.seoulaim.domain.diary.entity.DiaryPaymentMethod;
 import com.seoulaim.domain.diary.entity.DiaryPaymentStatus;
 import com.seoulaim.domain.diary.repository.AdminPaymentQueryRepository;
 import com.seoulaim.domain.diary.repository.AdminPaymentQueryRepository.Filter;
 import com.seoulaim.domain.diary.repository.AdminPaymentQueryRepository.StatusTotal;
 import com.seoulaim.domain.diary.repository.DiaryPaymentRepository;
 import com.seoulaim.domain.diary.repository.DiaryRepository;
+import com.seoulaim.domain.diary.repository.PaymentDailyTotal;
 import com.seoulaim.domain.inquiry.dto.PaymentRefundRequest;
 import com.seoulaim.domain.inquiry.service.RefundRequestQueryService;
 import com.seoulaim.domain.order.gateway.PaymentCurrency;
@@ -21,6 +24,7 @@ import com.seoulaim.global.exception.ErrorCode;
 import com.seoulaim.global.util.AdminPaging;
 import com.seoulaim.global.util.LikePattern;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Arrays;
@@ -32,6 +36,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -226,5 +231,37 @@ public class AdminPaymentService {
                 new BusinessException(
                     ErrorCode.COMMON_INVALID_REQUEST,
                     Map.of("status", "pending | paid | failed | refunded 중 하나여야 합니다")));
+  }
+
+  // 대시보드 ---------------------------------------------------------------
+
+  /** 최근 생성된 결제 limit 건 (상태 무관). 항목은 결제 목록과 같은 형태. */
+  public List<AdminPaymentResponse> getRecentPayments(int limit) {
+    return toResponses(diaryPaymentRepository.findAllByOrderByCreatedAtDescIdDesc(Limit.of(limit)));
+  }
+
+  /** [from, to) 에 승인된 결제 (나중에 환불된 것 포함) KST 날짜·통화·수단별 합계. */
+  public List<PaymentDailyStat> findPaidDailyStats(Instant from, Instant to) {
+    return toStats(diaryPaymentRepository.sumPaidByKstDate(from, to));
+  }
+
+  /** [from, to) 에 환불된 결제 KST 날짜·통화·수단별 합계. */
+  public List<PaymentDailyStat> findRefundedDailyStats(Instant from, Instant to) {
+    return toStats(diaryPaymentRepository.sumRefundedByKstDate(from, to));
+  }
+
+  private static List<PaymentDailyStat> toStats(List<PaymentDailyTotal> rows) {
+    return rows.stream()
+        .map(
+            row -> {
+              PaymentCurrency currency = PaymentCurrency.valueOf(row.getCurrency());
+              return new PaymentDailyStat(
+                  LocalDate.parse(row.getDay()),
+                  currency,
+                  DiaryPaymentMethod.valueOf(row.getMethod()),
+                  row.getCount(),
+                  currency.normalize(row.getAmount()));
+            })
+        .toList();
   }
 }

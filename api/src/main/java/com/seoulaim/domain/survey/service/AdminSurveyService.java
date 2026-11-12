@@ -10,9 +10,11 @@ import com.seoulaim.domain.survey.admin.dto.AdminSurveyQuestionResponse;
 import com.seoulaim.domain.survey.admin.dto.AdminSurveyResponse;
 import com.seoulaim.domain.survey.admin.dto.AdminSurveyResultsResponse;
 import com.seoulaim.domain.survey.admin.dto.AdminSurveyUpdateRequest;
+import com.seoulaim.domain.survey.dto.SurveyDashboardStats;
 import com.seoulaim.domain.survey.dto.SurveyInvite;
 import com.seoulaim.domain.survey.entity.SurveyOption;
 import com.seoulaim.domain.survey.entity.SurveyQuestion;
+import com.seoulaim.domain.survey.entity.SurveyQuestionType;
 import com.seoulaim.domain.survey.entity.SurveyResponse;
 import com.seoulaim.domain.survey.entity.SurveySettings;
 import com.seoulaim.domain.survey.repository.SurveyOptionRepository;
@@ -22,7 +24,9 @@ import com.seoulaim.domain.survey.repository.SurveyResponseRepository;
 import com.seoulaim.domain.survey.repository.SurveySettingsRepository;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
+import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -346,5 +350,23 @@ public class AdminSurveyService {
   private static BusinessException hasAnswers(UUID questionId, String reason) {
     return new BusinessException(
         ErrorCode.SURVEY_QUESTION_HAS_ANSWERS, Map.of(questionId.toString(), reason));
+  }
+
+  /** 어드민 대시보드: 별점 평균(전체 기간)·최근 7일 응답 수·[from, to) 응답 수. */
+  public SurveyDashboardStats getDashboardStats(Instant from, Instant to) {
+    Instant now = clock.instant();
+    Double averageRating =
+        surveyQuestionRepository.findAllByArchivedFalseOrderByDisplayOrderAscIdAsc().stream()
+            .filter(question -> question.getType() == SurveyQuestionType.RATING)
+            .findFirst()
+            .map(question -> surveyResponseRepository.averageRating(question.getId().toString()))
+            .map(BigDecimal::doubleValue)
+            .orElse(null);
+    return new SurveyDashboardStats(
+        averageRating,
+        surveyResponseRepository.countBySubmittedAtGreaterThanEqualAndSubmittedAtLessThan(
+            now.minus(Duration.ofDays(7)), now),
+        surveyResponseRepository.countBySubmittedAtGreaterThanEqualAndSubmittedAtLessThan(
+            from, to));
   }
 }

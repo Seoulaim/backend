@@ -1,6 +1,8 @@
 package com.seoulaim.domain.diary.repository;
 
 import com.seoulaim.domain.diary.entity.Diary;
+import com.seoulaim.domain.diary.entity.DiaryStatus;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -39,4 +41,31 @@ public interface DiaryRepository extends JpaRepository<Diary, UUID> {
       group by d.userId
       """)
   List<UserCount> countVisibleByUserIds(Collection<UUID> userIds);
+
+  /**
+   * 대시보드 다이어리 수 (한 번의 스캔). "보이는" 다이어리 = 삭제 안 됐고 무료이거나 결제됨 (회원 앱 목록 규칙).
+   *
+   * <ul>
+   *   <li>total: 보이는 다이어리
+   *   <li>createdInRange: [from, to) 생성 + 무료이거나 결제됨 (이후 삭제된 것 포함)
+   *   <li>finalized: 보이는 것 중 FINALIZED
+   *   <li>finalizedInRange: [from, to) 완성 (이후 삭제된 것 포함)
+   *   <li>paid: 보이는 것 중 결제됨 (환불되면 paid=false 라 빠진다)
+   * </ul>
+   */
+  @Query(
+      """
+      select
+        coalesce(sum(case when d.deletedAt is null and (d.isFree = true or d.paid = true)
+          then 1 else 0 end), 0) as total,
+        coalesce(sum(case when d.createdAt >= :from and d.createdAt < :to
+          and (d.isFree = true or d.paid = true) then 1 else 0 end), 0) as createdInRange,
+        coalesce(sum(case when d.deletedAt is null and (d.isFree = true or d.paid = true)
+          and d.status = :finalized then 1 else 0 end), 0) as finalized,
+        coalesce(sum(case when d.completedAt >= :from and d.completedAt < :to
+          then 1 else 0 end), 0) as finalizedInRange,
+        coalesce(sum(case when d.deletedAt is null and d.paid = true then 1 else 0 end), 0) as paid
+      from Diary d
+      """)
+  DiaryCounts countForDashboard(Instant from, Instant to, DiaryStatus finalized);
 }

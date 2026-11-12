@@ -2,6 +2,8 @@ package com.seoulaim.domain.user.repository;
 
 import com.seoulaim.domain.user.entity.User;
 import com.seoulaim.domain.user.entity.UserStatus;
+import com.seoulaim.global.common.KstDateCount;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -36,4 +38,23 @@ public interface UserRepository extends JpaRepository<User, UUID> {
       order by u.createdAt desc, u.id desc
       """)
   Page<User> searchForAdmin(UserStatus status, String pattern, Pageable pageable);
+
+  // 대시보드 ---------------------------------------------------------------
+
+  long countByStatusNot(UserStatus status);
+
+  long countByWithdrawnAtGreaterThanEqualAndWithdrawnAtLessThan(Instant from, Instant to);
+
+  /** [from, to) 가입 수를 KST 날짜별로. 탈퇴한 회원도 가입 시점에 센다. 가입이 없는 날은 행이 없다. */
+  @Query(
+      value =
+          """
+          SELECT to_char(u.created_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD') AS day,
+                 COUNT(*) AS count
+          FROM users u
+          WHERE u.created_at >= :from AND u.created_at < :to
+          GROUP BY day
+          """,
+      nativeQuery = true)
+  List<KstDateCount> countSignupsByKstDate(Instant from, Instant to);
 }

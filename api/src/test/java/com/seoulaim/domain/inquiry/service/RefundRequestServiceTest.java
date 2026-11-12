@@ -3,6 +3,7 @@ package com.seoulaim.domain.inquiry.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
@@ -54,6 +55,7 @@ class RefundRequestServiceTest {
   @Mock private InquiryRepository inquiryRepository;
   @Mock private DiaryPaymentService diaryPaymentService;
   @Mock private RefundAuthorLoader refundAuthorLoader;
+  @Mock private InquiryAuthorLoader inquiryAuthorLoader;
   @Mock private EmailSender emailSender;
   @Mock private ApplicationEventPublisher eventPublisher;
 
@@ -66,6 +68,7 @@ class RefundRequestServiceTest {
             inquiryRepository,
             diaryPaymentService,
             refundAuthorLoader,
+            inquiryAuthorLoader,
             emailSender,
             eventPublisher,
             Clock.fixed(NOW, ZoneOffset.UTC));
@@ -261,7 +264,7 @@ class RefundRequestServiceTest {
     List<Inquiry> ascending = List.of(waitingOld, decidedOld, waitingNew, decidedNew);
     given(inquiryRepository.findAllByCategoryOrderByCreatedAtAscIdAsc(InquiryCategory.REFUND))
         .willReturn(ascending);
-    given(refundAuthorLoader.load(ascending)).willReturn(Map.of());
+    given(refundAuthorLoader.load(anyCollection())).willReturn(Map.of());
     given(diaryPaymentService.findRefundInfos(any())).willReturn(List.of());
 
     assertThat(refundRequestService.getRefundRequests())

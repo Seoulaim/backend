@@ -1,4 +1,4 @@
-# 어드민 운영 가이드 — 결제·회원 관리 (#57)
+# 어드민 운영 가이드 — 결제·회원 관리 (#57)·대시보드 (#67)
 
 라이브 결제 전환 전에 운영자가 결제를 토스 콘솔과 대조하고, 회원 이력을 보고, 필요하면 강퇴할 수 있게 하는 API.
 
@@ -213,11 +213,94 @@
 
 - `PATCH /admin/places/{id}/visible { visible }` → 어드민 장소 상세. 노출 여부만 바꾸고 다른 필드는 검증하지 않는다 (전체 `PUT` 은 `summary.en`·`address.en` 필수라 노출 토글에 쓰지 않는다). 없는 장소 `404 PLACE_NOT_FOUND`
 
+## 4. 대시보드 (#67)
+
+`GET /admin/dashboard?range=7d|30d|90d` (기본 `7d`, 대소문자 무시. 그 밖의 값 `400 COMMON_INVALID_REQUEST`, `fields.range`)
+
+- 날짜 경계는 전부 **KST(Asia/Seoul) 자정**. `range=Nd` = 오늘 포함 N일 `[오늘-(N-1) 00:00 KST, 내일 00:00 KST)`. 일별 배열은 빈 날도 0 으로 채우고 오래된 순
+- 앞의 6개 필드(`signups`, `payments`, `daily`, `pendingInquiries`, `pendingRefunds`, `survey`)는 **어드민 mock(`api/dashboard.js`) 그대로** — 화면 코드를 바꾸지 않아도 된다. 나머지는 기간 지표 추가분
+- 금액은 통화 단위 숫자 (KRW 원 정수, USD 소수 2자리). 통화별 맵은 결제가 없어도 `{ "KRW": 0, "USD": 0.00 }` 두 키를 항상 내려준다
+- 다른 통화끼리 더하지 않는다. mock 호환 필드 `payments.*.revenue` 는 **원화만** (결제 관리 `summary.paidAmount` 와 같은 규칙), 통화별은 `revenues`
+
+### 응답 예시
+
+```json
+{
+  "signups": { "today": 4, "yesterday": 6 },
+  "payments": {
+    "thisMonth": { "paymentCount": 21, "revenue": 45000, "revenues": { "KRW": 45000, "USD": 17.94 } },
+    "lastMonth": { "paymentCount": 30, "revenue": 72000, "revenues": { "KRW": 72000, "USD": 17.94 } }
+  },
+  "daily": [
+    { "date": "2026-10-30", "signups": 3, "payments": 1 },
+    "… 14개, 마지막이 오늘 …",
+    { "date": "2026-11-12", "signups": 4, "payments": 2 }
+  ],
+  "pendingInquiries": [
+    { "id": "019a…", "category": "diary", "title": "Can't save my diary", "nickname": "Mina", "createdAt": "2026-11-12T01:20:00Z" }
+  ],
+  "pendingRefunds": [
+    { "id": "019a…", "title": "Refund for my second diary", "nickname": "Jin", "amount": 2.99, "currency": "USD",
+      "createdAt": "2026-11-10T09:00:00Z", "deadline": "2026-11-13" }
+  ],
+  "survey": { "averageRating": 4.333333333333333, "responsesThisWeek": 5, "responsesInRange": 5 },
+  "range": "7d",
+  "from": "2026-11-06",
+  "to": "2026-11-12",
+  "members": {
+    "total": 1284, "newInRange": 31, "withdrawnInRange": 2,
+    "daily": [{ "date": "2026-11-06", "signups": 5 }, "…", { "date": "2026-11-12", "signups": 4 }]
+  },
+  "diaries": { "total": 1502, "createdInRange": 40, "finalized": 611, "finalizedInRange": 18, "paid": 233 },
+  "sales": {
+    "paidCount": 12, "paidAmounts": { "KRW": 27000, "USD": 8.97 },
+    "refundedCount": 1, "refundedAmounts": { "KRW": 0, "USD": 2.99 },
+    "methodCounts": { "CARD": 9, "PAYPAL": 3 },
+    "daily": [
+      { "date": "2026-11-12", "paidCount": 2, "paidAmounts": { "KRW": 3000, "USD": 2.99 },
+        "refundedCount": 0, "refundedAmounts": { "KRW": 0, "USD": 0.00 } }
+    ]
+  },
+  "pending": { "refundRequests": 1, "refundsDueSoon": 1, "refundsOverdue": 0, "inquiries": 1 },
+  "recent": {
+    "payments": ["결제 관리 목록 items 와 같은 항목 × 최대 5"],
+    "inquiries": ["GET /admin/inquiries 의 inquiries 항목 × 최대 5"],
+    "refundRequests": ["GET /admin/refund-requests 항목 × 최대 5"]
+  }
+}
+```
+
+### 필드 기준
+
+| 필드 | 기준 |
+|---|---|
+| `signups.today` / `yesterday` | KST 오늘·어제 가입 수 (이후 탈퇴한 회원 포함) |
+| `payments.thisMonth` / `lastMonth` | KST 달력 월. `paymentCount` = 그 달에 **승인**된 결제 수(이후 환불된 것 포함, 모든 통화) |
+| `daily` | 최근 14일. `payments` = 그날 승인된 결제 수 |
+| `pendingInquiries` | 답변 대기(RECEIVED) 문의 **전체**, 환불 문의 제외, 최신순 (화면이 `length` 로 건수를 센다) |
+| `pendingRefunds` | 처리 대기(REQUESTED) 환불 **전체**, 최신순. mock 에 없는 `currency`·`deadline`(신청일 + 영업일 3일) 추가 |
+| `survey.averageRating` | 숨기지 않은 첫 별점 질문의 **전체 기간** 평균 (어드민 `headlineRating` 과 같음, 답하지 않은 응답 제외). 질문·응답이 없으면 `null`. 반올림 안 함 |
+| `survey.responsesThisWeek` | 최근 7×24시간 (mock 과 같은 기준, KST 날짜 아님) |
+| `survey.responsesInRange` | 기간 내 응답 수 |
+| `members.total` | 탈퇴하지 않은 회원 (정지 포함) |
+| `members.newInRange` / `withdrawnInRange` | 기간 내 가입 / 탈퇴(본인·어드민 강퇴 모두, `withdrawn_at` 기준) |
+| `diaries.total` | 회원 앱 목록에 보이는 다이어리 = 삭제 안 됐고 무료이거나 결제됨 |
+| `diaries.createdInRange` | 기간 내 생성 + 무료이거나 결제됨 (이후 삭제된 것 포함, 결제 안 한 빈 다이어리 제외) |
+| `diaries.finalized` / `finalizedInRange` | 보이는 것 중 완성 / 기간 내 완성(`completed_at`, 이후 삭제 포함) |
+| `diaries.paid` | 보이는 것 중 결제된 다이어리 (환불되면 빠진다) |
+| `sales.paid*`, `methodCounts` | 기간 내 **승인 시각(`paid_at`)** 기준. 나중에 환불된 결제도 포함 |
+| `sales.refunded*` | 기간 내 **환불 시각(`refunded_at`)** 기준. 같은 결제가 승인·환불 양쪽에 잡힐 수 있다 (순매출 = paid − refunded) |
+| `pending.refundsDueSoon` / `refundsOverdue` | 처리 대기 환불 중 기한이 오늘·내일 / 이미 지남 (KST 날짜) |
+| `pending.inquiries` | `pendingInquiries` 건수 |
+| `recent.*` | 최근 생성 5건씩 (상태 무관). 결제는 PENDING·FAILED 포함, 문의는 환불 제외, 환불 요청은 신청 최신순 |
+
 ## 에러 코드
 
 | code | HTTP | 언제 |
 |---|---|---|
-| `COMMON_INVALID_REQUEST` | 400 | 잘못된 `status`·날짜 형식·`from > to`·page/size 범위, 강퇴 사유 검증 실패 |
+| `COMMON_INVALID_REQUEST` | 400 | 잘못된 `status`·날짜 형식·`from > to`·page/size 범위, 강퇴 사유 검증 실패, 대시보드 `range` 값 |
+| `COMMON_NOT_FOUND` | 404 | 등록되지 않은 경로 (전 API 공통) |
+| `COMMON_METHOD_NOT_ALLOWED` | 405 | 경로는 있지만 지원하지 않는 메서드 (`Allow` 헤더에 지원 메서드) |
 | `PAYMENT_NOT_FOUND` | 404 | 없는 결제 |
 | `USER_NOT_FOUND` | 404 | 없는 회원 |
 | `USER_ALREADY_WITHDRAWN` | 409 | 이미 탈퇴한 회원 강퇴 |
