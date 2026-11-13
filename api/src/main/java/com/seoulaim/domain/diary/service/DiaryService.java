@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.seoulaim.domain.diary.admin.dto.AdminDiarySummaryResponse;
 import com.seoulaim.domain.diary.dto.DiaryCreateResponse;
+import com.seoulaim.domain.diary.dto.DiaryDashboardCounts;
 import com.seoulaim.domain.diary.dto.DiaryDownloadRequest;
 import com.seoulaim.domain.diary.dto.DiaryEditorResponse;
 import com.seoulaim.domain.diary.dto.DiaryFinishedPagesRequest;
@@ -16,6 +17,8 @@ import com.seoulaim.domain.diary.dto.DiarySummaryResponse;
 import com.seoulaim.domain.diary.dto.UserDiaryInfo;
 import com.seoulaim.domain.diary.entity.Diary;
 import com.seoulaim.domain.diary.entity.DiaryDownload;
+import com.seoulaim.domain.diary.entity.DiaryStatus;
+import com.seoulaim.domain.diary.repository.DiaryCounts;
 import com.seoulaim.domain.diary.repository.DiaryDownloadRepository;
 import com.seoulaim.domain.diary.repository.DiaryRepository;
 import com.seoulaim.domain.file.dto.FileDetail;
@@ -326,4 +329,15 @@ public class DiaryService {
   }
 
   private record EditData(List<Object> spreads, Map<String, Object> placePhotos, int photoCount) {}
+
+  /** 어드민 대시보드: 다이어리 수 ([from, to) 기간 지표 포함). 쿼리 1번. */
+  public DiaryDashboardCounts countForDashboard(Instant from, Instant to) {
+    DiaryCounts counts = diaryRepository.countForDashboard(from, to, DiaryStatus.FINALIZED);
+    return new DiaryDashboardCounts(
+        counts.getTotal(),
+        counts.getCreatedInRange(),
+        counts.getFinalized(),
+        counts.getFinalizedInRange(),
+        counts.getPaid());
+  }
 }

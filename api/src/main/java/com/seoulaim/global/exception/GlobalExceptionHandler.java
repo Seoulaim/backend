@@ -4,14 +4,18 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.MDC;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -81,6 +85,40 @@ public class GlobalExceptionHandler {
     ErrorCode errorCode = ErrorCode.COMMON_INVALID_REQUEST;
 
     return ResponseEntity.status(errorCode.getStatus())
+        .body(
+            new ErrorResponse(
+                errorCode.getCode(),
+                errorCode.getMessage(),
+                Collections.emptyMap(),
+                MDC.get("traceId")));
+  }
+
+  // 등록되지 않은 경로 (정적 리소스 핸들러까지 못 찾으면 NoResourceFoundException)
+  @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
+  public ResponseEntity<ErrorResponse> handleNotFoundException(Exception exception) {
+    ErrorCode errorCode = ErrorCode.COMMON_NOT_FOUND;
+
+    return ResponseEntity.status(errorCode.getStatus())
+        .body(
+            new ErrorResponse(
+                errorCode.getCode(),
+                errorCode.getMessage(),
+                Collections.emptyMap(),
+                MDC.get("traceId")));
+  }
+
+  // 경로는 있지만 메서드가 다름. Allow 헤더에 지원 메서드를 담는다
+  @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+  public ResponseEntity<ErrorResponse> handleMethodNotSupportedException(
+      HttpRequestMethodNotSupportedException exception) {
+    ErrorCode errorCode = ErrorCode.COMMON_METHOD_NOT_ALLOWED;
+    HttpHeaders headers = new HttpHeaders();
+    if (exception.getSupportedHttpMethods() != null) {
+      headers.setAllow(exception.getSupportedHttpMethods());
+    }
+
+    return ResponseEntity.status(errorCode.getStatus())
+        .headers(headers)
         .body(
             new ErrorResponse(
                 errorCode.getCode(),

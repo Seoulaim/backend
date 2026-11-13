@@ -3,10 +3,12 @@ package com.seoulaim.domain.diary.repository;
 import com.seoulaim.domain.diary.entity.DiaryPayment;
 import com.seoulaim.domain.diary.entity.DiaryPaymentStatus;
 import jakarta.persistence.LockModeType;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -41,4 +43,37 @@ public interface DiaryPaymentRepository extends JpaRepository<DiaryPayment, UUID
       group by p.userId
       """)
   List<UserCount> countByUserIdsAndStatus(Collection<UUID> userIds, DiaryPaymentStatus status);
+
+  // 대시보드 ---------------------------------------------------------------
+
+  /** 최근 생성된 결제 (상태 무관, 어드민 결제 목록 기본 정렬과 같음). */
+  List<DiaryPayment> findAllByOrderByCreatedAtDescIdDesc(Limit limit);
+
+  /** [from, to) 에 승인된 결제를 KST 날짜·통화·수단별로 합산. 나중에 환불된 결제도 승인 시점에 센다 (환불은 따로 집계). */
+  @Query(
+      value =
+          """
+          SELECT to_char(p.paid_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD') AS day,
+                 p.currency AS currency, p.method AS method,
+                 COUNT(*) AS count, SUM(p.amount) AS amount
+          FROM diary_payments p
+          WHERE p.status IN ('PAID', 'REFUNDED') AND p.paid_at >= :from AND p.paid_at < :to
+          GROUP BY day, p.currency, p.method
+          """,
+      nativeQuery = true)
+  List<PaymentDailyTotal> sumPaidByKstDate(Instant from, Instant to);
+
+  /** [from, to) 에 환불된 결제를 KST 날짜·통화·수단별로 합산. */
+  @Query(
+      value =
+          """
+          SELECT to_char(p.refunded_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD') AS day,
+                 p.currency AS currency, p.method AS method,
+                 COUNT(*) AS count, SUM(p.amount) AS amount
+          FROM diary_payments p
+          WHERE p.status = 'REFUNDED' AND p.refunded_at >= :from AND p.refunded_at < :to
+          GROUP BY day, p.currency, p.method
+          """,
+      nativeQuery = true)
+  List<PaymentDailyTotal> sumRefundedByKstDate(Instant from, Instant to);
 }

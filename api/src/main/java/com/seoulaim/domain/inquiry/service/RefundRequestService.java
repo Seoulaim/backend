@@ -2,12 +2,15 @@ package com.seoulaim.domain.inquiry.service;
 
 import com.seoulaim.domain.diary.dto.PaymentRefundInfo;
 import com.seoulaim.domain.diary.service.DiaryPaymentService;
+import com.seoulaim.domain.inquiry.admin.dto.AdminPendingRefundResponse;
 import com.seoulaim.domain.inquiry.admin.dto.AdminRefundApproveRequest;
 import com.seoulaim.domain.inquiry.admin.dto.AdminRefundRejectRequest;
 import com.seoulaim.domain.inquiry.admin.dto.AdminRefundRequestResponse;
+import com.seoulaim.domain.inquiry.admin.dto.InquiryAuthor;
 import com.seoulaim.domain.inquiry.admin.dto.RefundAuthor;
 import com.seoulaim.domain.inquiry.entity.Inquiry;
 import com.seoulaim.domain.inquiry.entity.InquiryCategory;
+import com.seoulaim.domain.inquiry.entity.RefundStatus;
 import com.seoulaim.domain.inquiry.repository.InquiryRepository;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
@@ -24,6 +27,7 @@ import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,6 +51,7 @@ public class RefundRequestService {
   private final InquiryRepository inquiryRepository;
   private final DiaryPaymentService diaryPaymentService;
   private final RefundAuthorLoader refundAuthorLoader;
+  private final InquiryAuthorLoader inquiryAuthorLoader;
   private final EmailSender emailSender;
   private final ApplicationEventPublisher eventPublisher;
   private final Clock clock;
@@ -55,12 +60,6 @@ public class RefundRequestService {
   public List<AdminRefundRequestResponse> getRefundRequests() {
     List<Inquiry> inquiries =
         inquiryRepository.findAllByCategoryOrderByCreatedAtAscIdAsc(InquiryCategory.REFUND);
-    Map<UUID, RefundAuthor> authors = refundAuthorLoader.load(inquiries);
-    Map<UUID, PaymentRefundInfo> payments =
-        diaryPaymentService
-            .findRefundInfos(inquiries.stream().map(Inquiry::getPaymentId).distinct().toList())
-            .stream()
-            .collect(Collectors.toMap(PaymentRefundInfo::id, Function.identity()));
     Stream<Inquiry> waiting = inquiries.stream().filter(Inquiry::isRefundRequested);
     Stream<Inquiry> decided =
         inquiries.stream()
@@ -69,14 +68,7 @@ public class RefundRequestService {
                 Comparator.comparing(
                         Inquiry::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder()))
                     .thenComparing(Inquiry::getId, Comparator.reverseOrder()));
-    return Stream.concat(waiting, decided)
-        .map(
-            inquiry ->
-                view(
-                    inquiry,
-                    authors.get(inquiry.getUserId()),
-                    payments.get(inquiry.getPaymentId())))
-        .toList();
+    return views(Stream.concat(waiting, decided).toList());
   }
 
   public AdminRefundRequestResponse getRefundRequest(UUID inquiryId) {
@@ -195,5 +187,60 @@ public class RefundRequestService {
     Instant createdAt = inquiry.getCreatedAt();
     return AdminRefundRequestResponse.of(
         inquiry, author, payment, AdminInquiryService.ADMIN_NAME, RefundDeadline.of(createdAt));
+  }
+
+  // 대시보드 ---------------------------------------------------------------
+
+  /** 처리 대기(REQUESTED) 환불 전체, 최신순 (어드민 mock dashboard.js 와 같은 순서). */
+  public List<AdminPendingRefundResponse> getPendingRefunds() {
+    List<Inquiry> inquiries =
+        inquiryRepository.findAllByCategoryAndRefundStatusOrderByCreatedAtDescIdDesc(
+            InquiryCategory.REFUND, RefundStatus.REQUESTED);
+    Map<UUID, InquiryAuthor> authors = inquiryAuthorLoader.load(inquiries);
+    Map<UUID, PaymentRefundInfo> payments = loadPayments(inquiries);
+    return inquiries.stream()
+        .map(
+            inquiry -> {
+              PaymentRefundInfo payment = payments.get(inquiry.getPaymentId());
+              return new AdminPendingRefundResponse(
+                  inquiry.getId(),
+                  inquiry.getTitle(),
+                  authors.get(inquiry.getUserId()).nickname(),
+                  payment == null ? null : payment.amount(),
+                  payment == null ? null : payment.currency(),
+                  inquiry.getCreatedAt(),
+                  RefundDeadline.of(inquiry.getCreatedAt()));
+            })
+        .toList();
+  }
+
+  /** 최근 환불 요청 limit 건 (상태 무관, 신청 최신순). 항목은 환불 요청 목록과 같은 형태. */
+  public List<AdminRefundRequestResponse> getRecentRefundRequests(int limit) {
+    return views(
+        inquiryRepository.findAllByCategoryOrderByCreatedAtDescIdDesc(
+            InquiryCategory.REFUND, Limit.of(limit)));
+  }
+
+  private List<AdminRefundRequestResponse> views(List<Inquiry> inquiries) {
+    Map<UUID, RefundAuthor> authors = refundAuthorLoader.load(inquiries);
+    Map<UUID, PaymentRefundInfo> payments = loadPayments(inquiries);
+    return inquiries.stream()
+        .map(
+            inquiry ->
+                view(
+                    inquiry,
+                    authors.get(inquiry.getUserId()),
+                    payments.get(inquiry.getPaymentId())))
+        .toList();
+  }
+
+  private Map<UUID, PaymentRefundInfo> loadPayments(List<Inquiry> inquiries) {
+    if (inquiries.isEmpty()) {
+      return Map.of();
+    }
+    return diaryPaymentService
+        .findRefundInfos(inquiries.stream().map(Inquiry::getPaymentId).distinct().toList())
+        .stream()
+        .collect(Collectors.toMap(PaymentRefundInfo::id, Function.identity()));
   }
 }

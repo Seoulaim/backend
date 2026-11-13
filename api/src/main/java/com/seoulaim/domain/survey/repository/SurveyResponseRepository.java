@@ -1,6 +1,7 @@
 package com.seoulaim.domain.survey.repository;
 
 import com.seoulaim.domain.survey.entity.SurveyResponse;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -43,4 +44,17 @@ public interface SurveyResponseRepository extends JpaRepository<SurveyResponse, 
       nativeQuery = true)
   long countOptionAnswers(
       @Param("questionId") String questionId, @Param("optionId") String optionId);
+
+  long countBySubmittedAtGreaterThanEqualAndSubmittedAtLessThan(Instant from, Instant to);
+
+  /** 별점 질문의 평균 (숫자로 답한 응답만). 응답이 없으면 null. */
+  @Query(
+      value =
+          """
+          SELECT AVG(CAST(r.answers ->> CAST(:questionId AS text) AS numeric))
+          FROM survey_responses r
+          WHERE jsonb_typeof(r.answers -> CAST(:questionId AS text)) = 'number'
+          """,
+      nativeQuery = true)
+  BigDecimal averageRating(@Param("questionId") String questionId);
 }

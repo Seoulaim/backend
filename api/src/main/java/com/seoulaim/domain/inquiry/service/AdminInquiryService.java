@@ -5,10 +5,12 @@ import com.seoulaim.domain.inquiry.admin.dto.AdminInquiryAnswerResponse;
 import com.seoulaim.domain.inquiry.admin.dto.AdminInquiryListResponse;
 import com.seoulaim.domain.inquiry.admin.dto.AdminInquiryMemoRequest;
 import com.seoulaim.domain.inquiry.admin.dto.AdminInquiryResponse;
+import com.seoulaim.domain.inquiry.admin.dto.AdminPendingInquiryResponse;
 import com.seoulaim.domain.inquiry.admin.dto.InquiryAuthor;
 import com.seoulaim.domain.inquiry.entity.Inquiry;
 import com.seoulaim.domain.inquiry.entity.InquiryAnswer;
 import com.seoulaim.domain.inquiry.entity.InquiryCategory;
+import com.seoulaim.domain.inquiry.entity.InquiryStatus;
 import com.seoulaim.domain.inquiry.entity.RefundStatus;
 import com.seoulaim.domain.inquiry.repository.InquiryAnswerRepository;
 import com.seoulaim.domain.inquiry.repository.InquiryRepository;
@@ -21,6 +23,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,18 +49,8 @@ public class AdminInquiryService {
   public AdminInquiryListResponse getInquiries() {
     List<Inquiry> inquiries =
         inquiryRepository.findAllByCategoryNotOrderByCreatedAtDescIdDesc(InquiryCategory.REFUND);
-    Map<UUID, InquiryAuthor> authors = inquiryAuthorLoader.load(inquiries);
-    Map<UUID, List<AdminInquiryAnswerResponse>> answers = loadAnswers(inquiries);
     return new AdminInquiryListResponse(
-        inquiries.stream()
-            .map(
-                inquiry ->
-                    AdminInquiryResponse.of(
-                        inquiry,
-                        authors.get(inquiry.getUserId()),
-                        answers.getOrDefault(inquiry.getId(), List.of())))
-            .toList(),
-        inquiryRepository.countByRefundStatus(RefundStatus.REQUESTED));
+        views(inquiries), inquiryRepository.countByRefundStatus(RefundStatus.REQUESTED));
   }
 
   public AdminInquiryResponse getInquiry(UUID inquiryId) {
@@ -126,5 +119,45 @@ public class AdminInquiryService {
                 Collectors.mapping(
                     answer -> AdminInquiryAnswerResponse.of(answer, ADMIN_NAME),
                     Collectors.toList())));
+  }
+
+  // 대시보드 ---------------------------------------------------------------
+
+  /** 답변 대기(RECEIVED) 문의 전체, 환불 제외, 최신순. */
+  public List<AdminPendingInquiryResponse> getPendingInquiries() {
+    List<Inquiry> inquiries =
+        inquiryRepository.findAllByCategoryNotAndStatusOrderByCreatedAtDescIdDesc(
+            InquiryCategory.REFUND, InquiryStatus.RECEIVED);
+    Map<UUID, InquiryAuthor> authors = inquiryAuthorLoader.load(inquiries);
+    return inquiries.stream()
+        .map(
+            inquiry ->
+                new AdminPendingInquiryResponse(
+                    inquiry.getId(),
+                    inquiry.getCategory(),
+                    inquiry.getTitle(),
+                    authors.get(inquiry.getUserId()).nickname(),
+                    inquiry.getCreatedAt()))
+        .toList();
+  }
+
+  /** 최근 문의 limit 건 (환불 제외, 상태 무관). 항목은 문의 목록과 같은 형태. */
+  public List<AdminInquiryResponse> getRecentInquiries(int limit) {
+    return views(
+        inquiryRepository.findAllByCategoryNotOrderByCreatedAtDescIdDesc(
+            InquiryCategory.REFUND, Limit.of(limit)));
+  }
+
+  private List<AdminInquiryResponse> views(List<Inquiry> inquiries) {
+    Map<UUID, InquiryAuthor> authors = inquiryAuthorLoader.load(inquiries);
+    Map<UUID, List<AdminInquiryAnswerResponse>> answers = loadAnswers(inquiries);
+    return inquiries.stream()
+        .map(
+            inquiry ->
+                AdminInquiryResponse.of(
+                    inquiry,
+                    authors.get(inquiry.getUserId()),
+                    answers.getOrDefault(inquiry.getId(), List.of())))
+        .toList();
   }
 }

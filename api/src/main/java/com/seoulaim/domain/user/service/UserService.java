@@ -11,16 +11,20 @@ import com.seoulaim.domain.user.entity.User;
 import com.seoulaim.domain.user.entity.UserStatus;
 import com.seoulaim.domain.user.entity.WithdrawnBy;
 import com.seoulaim.domain.user.repository.UserRepository;
+import com.seoulaim.global.common.KstDateCount;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
 import com.seoulaim.global.util.LikePattern;
 import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -220,5 +224,23 @@ public class UserService {
                         Map.of("profileImageFileId", "본인이 올린 프로필 이미지가 아닙니다")));
     fileService.markLinked(List.of(fileId));
     return file.s3Key();
+  }
+
+  // 대시보드 ---------------------------------------------------------------
+
+  /** 탈퇴하지 않은 회원 수 (정지 포함). */
+  public long countMembers() {
+    return userRepository.countByStatusNot(UserStatus.WITHDRAWN);
+  }
+
+  /** [from, to) 탈퇴 수 (본인 탈퇴·어드민 강퇴 모두). */
+  public long countWithdrawals(Instant from, Instant to) {
+    return userRepository.countByWithdrawnAtGreaterThanEqualAndWithdrawnAtLessThan(from, to);
+  }
+
+  /** [from, to) 가입 수를 KST 날짜별로. 가입이 없는 날은 빠진다. */
+  public Map<LocalDate, Long> countSignupsByDate(Instant from, Instant to) {
+    return userRepository.countSignupsByKstDate(from, to).stream()
+        .collect(Collectors.toMap(row -> LocalDate.parse(row.getDay()), KstDateCount::getCount));
   }
 }
