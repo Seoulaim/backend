@@ -9,9 +9,13 @@ import com.seoulaim.domain.auth.dto.SendEmailVerificationRequest;
 import com.seoulaim.domain.auth.dto.SendEmailVerificationResponse;
 import com.seoulaim.domain.auth.dto.SendPasswordResetCodeRequest;
 import com.seoulaim.domain.auth.dto.SignupRequest;
+import com.seoulaim.domain.auth.dto.SocialLoginRequest;
+import com.seoulaim.domain.auth.dto.SocialLoginResponse;
+import com.seoulaim.domain.auth.dto.SocialSignupRequest;
 import com.seoulaim.domain.auth.dto.TokenResponse;
 import com.seoulaim.domain.auth.service.AuthService;
 import com.seoulaim.domain.auth.service.EmailVerificationService;
+import com.seoulaim.domain.auth.service.SocialAuthService;
 import com.seoulaim.global.common.CurrentUserId;
 import com.seoulaim.global.config.SwaggerConfig;
 import io.swagger.v3.oas.annotations.Operation;
@@ -36,6 +40,7 @@ public class AuthController {
 
   private final EmailVerificationService emailVerificationService;
   private final AuthService authService;
+  private final SocialAuthService socialAuthService;
 
   @Operation(summary = "이메일 인증번호 발송")
   @PostMapping("/email-verifications")
@@ -63,6 +68,19 @@ public class AuthController {
   @PostMapping("/login")
   public TokenResponse login(@Valid @RequestBody LoginRequest request) {
     return authService.login(request.email(), request.password());
+  }
+
+  @Operation(summary = "구글 로그인 (신규 회원이면 signupRequired=true)")
+  @PostMapping("/oauth/google")
+  public SocialLoginResponse loginWithGoogle(@Valid @RequestBody SocialLoginRequest request) {
+    return socialAuthService.loginWithGoogle(request.idToken());
+  }
+
+  @Operation(summary = "구글 가입 (약관 동의·닉네임 입력 후, 이미 회원이면 로그인)")
+  @PostMapping("/oauth/google/signup")
+  @ResponseStatus(HttpStatus.CREATED)
+  public TokenResponse signupWithGoogle(@Valid @RequestBody SocialSignupRequest request) {
+    return socialAuthService.signupWithGoogle(request.idToken(), request.nickname());
   }
 
   @Operation(summary = "토큰 재발급")

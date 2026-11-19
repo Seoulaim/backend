@@ -32,6 +32,11 @@ public enum ErrorCode {
       HttpStatus.BAD_REQUEST, "AUTH_INVALID_PASSWORD", "비밀번호는 8~64자, 영문·숫자를 각 1자 이상 포함해야 합니다"),
   AUTH_MAIL_SEND_FAILED(
       HttpStatus.SERVICE_UNAVAILABLE, "AUTH_MAIL_SEND_FAILED", "인증 메일 발송에 실패했습니다"),
+  AUTH_INVALID_SOCIAL_TOKEN(
+      HttpStatus.UNAUTHORIZED, "AUTH_INVALID_SOCIAL_TOKEN", "소셜 로그인 정보가 유효하지 않습니다"),
+  AUTH_SOCIAL_ALREADY_LINKED(HttpStatus.CONFLICT, "AUTH_SOCIAL_ALREADY_LINKED", "이미 연결된 소셜 계정입니다"),
+  AUTH_SOCIAL_UNAVAILABLE(
+      HttpStatus.SERVICE_UNAVAILABLE, "AUTH_SOCIAL_UNAVAILABLE", "소셜 로그인을 사용할 수 없습니다"),
 
   // USER
   USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "사용자를 찾을 수 없습니다"),
