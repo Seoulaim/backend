@@ -46,7 +46,7 @@ class ArtistSearchIntegrationTest {
         artistGroupRepository.save(ArtistGroup.create("ATEEZ", "에이티즈", null, null, null, null, 1));
     ArtistGroup ive =
         artistGroupRepository.save(ArtistGroup.create("IVE", "아이브", null, null, null, null, 2));
-    artistRepository.save(Artist.create(ateez, "SAN", "산", null, null, null, null, 1));
+    artistRepository.save(Artist.create(ateez, "SAN", "산", "サン", null, null, null, 1));
     artistRepository.save(Artist.create(ateez, "YUNHO", "윤호", null, null, null, null, 2));
     artistRepository.save(Artist.create(ive, "GAEUL", "가을", null, null, null, null, 1));
   }
@@ -69,7 +69,52 @@ class ArtistSearchIntegrationTest {
 
     assertThat(result.items())
         .extracting(ArtistWithGroupResponse::nameEn)
-        .containsExactlyInAnyOrder("SAN", "YUNHO");
+        .containsExactly("SAN", "YUNHO");
+  }
+
+  @Test
+  @DisplayName("일본어 이름으로도 검색한다")
+  void searchArtists_일본어이름() {
+    assertThat(artistService.searchArtists("サン", null, 20).items())
+        .extracting(ArtistWithGroupResponse::nameEn)
+        .containsExactly("SAN");
+  }
+
+  @Test
+  @DisplayName("이름과 검색어의 공백·하이픈을 무시하고 비교한다")
+  void searchArtists_공백하이픈무시() {
+    ArtistGroup straykids =
+        artistGroupRepository.save(
+            ArtistGroup.create("Stray Kids", "스트레이 키즈", null, null, null, null, 3));
+    artistRepository.save(Artist.create(straykids, "I.N", "아이엔", null, null, null, null, 1));
+    ArtistGroup bts =
+        artistGroupRepository.save(ArtistGroup.create("BTS", "방탄소년단", null, null, null, null, 4));
+    artistRepository.save(Artist.create(bts, "J-HOPE", "제이홉", null, null, null, null, 1));
+
+    assertThat(artistService.searchArtists("straykids", null, 20).items())
+        .extracting(ArtistWithGroupResponse::nameEn)
+        .containsExactly("I.N");
+    assertThat(artistService.searchArtists("스트레이키즈", null, 20).items())
+        .extracting(ArtistWithGroupResponse::nameEn)
+        .containsExactly("I.N");
+    assertThat(artistService.searchArtists("j hope", null, 20).items())
+        .extracting(ArtistWithGroupResponse::nameEn)
+        .containsExactly("J-HOPE");
+  }
+
+  @Test
+  @DisplayName("멤버 이름 일치가 그룹 이름 일치보다 먼저, 그다음 그룹·멤버 노출 순서로 정렬한다")
+  void searchArtists_정렬_멤버일치우선() {
+    // SAN·GAEUL 은 멤버 이름에 a, YUNHO 는 그룹 이름(ATEEZ)에만 a
+    assertThat(artistService.searchArtists("a", null, 20).items())
+        .extracting(ArtistWithGroupResponse::nameEn)
+        .containsExactly("SAN", "GAEUL", "YUNHO");
+  }
+
+  @Test
+  @DisplayName("공백·하이픈만 입력하면 빈 결과")
+  void searchArtists_빈검색어() {
+    assertThat(artistService.searchArtists(" - ", null, 20).items()).isEmpty();
   }
 
   @Test
@@ -79,9 +124,11 @@ class ArtistSearchIntegrationTest {
     CursorPageResponse<ArtistWithGroupResponse> second =
         artistService.searchArtists("a", first.nextCursor(), 2);
 
-    assertThat(first.items()).hasSize(2);
-    assertThat(first.nextCursor()).isNotNull();
-    assertThat(second.items()).hasSize(1);
+    assertThat(first.items())
+        .extracting(ArtistWithGroupResponse::nameEn)
+        .containsExactly("SAN", "GAEUL");
+    assertThat(first.nextCursor()).isEqualTo("2");
+    assertThat(second.items()).extracting(ArtistWithGroupResponse::nameEn).containsExactly("YUNHO");
     assertThat(second.nextCursor()).isNull();
   }
 
@@ -92,9 +139,9 @@ class ArtistSearchIntegrationTest {
   }
 
   @Test
-  @DisplayName("UUID 형식이 아닌 cursor 면 ARTIST_INVALID_CURSOR 예외가 발생한다")
+  @DisplayName("숫자가 아닌 cursor 면 ARTIST_INVALID_CURSOR 예외가 발생한다")
   void searchArtists_잘못된커서_예외() {
-    assertThatThrownBy(() -> artistService.searchArtists("a", "not-uuid", 20))
+    assertThatThrownBy(() -> artistService.searchArtists("a", "not-number", 20))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.ARTIST_INVALID_CURSOR);

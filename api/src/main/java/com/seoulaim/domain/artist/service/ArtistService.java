@@ -13,6 +13,7 @@ import com.seoulaim.global.exception.ErrorCode;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -49,15 +50,20 @@ public class ArtistService {
         .toList();
   }
 
-  // size + 1 개 조회 → 남는 1개로 다음 페이지 유무 판단
+  // size + 1 개 조회 → 남는 1개로 다음 페이지 유무 판단. cursor 는 다음 offset
   public CursorPageResponse<ArtistWithGroupResponse> searchArtists(
       String keyword, String cursor, int size) {
-    String pattern = "%" + escapeLike(keyword.trim()) + "%";
-    List<Artist> artists = artistRepository.searchByKeyword(pattern, parseCursor(cursor), size + 1);
+    String normalized = normalize(keyword);
+    if (normalized.isEmpty()) {
+      return new CursorPageResponse<>(List.of(), null);
+    }
+    int offset = parseCursor(cursor);
+    String pattern = "%" + escapeLike(normalized) + "%";
+    List<Artist> artists = artistRepository.searchByKeyword(pattern, offset, size + 1);
 
     boolean hasNext = artists.size() > size;
     List<Artist> page = hasNext ? artists.subList(0, size) : artists;
-    String nextCursor = hasNext ? page.getLast().getId().toString() : null;
+    String nextCursor = hasNext ? String.valueOf(offset + size) : null;
 
     return new CursorPageResponse<>(toResponsesWithGroup(page), nextCursor);
   }
@@ -105,16 +111,25 @@ public class ArtistService {
         .toList();
   }
 
-  // UUID 형식 검증 후 문자열 그대로 전달 (쿼리에서 uuid 로 CAST)
-  private String parseCursor(String cursor) {
+  // 첫 페이지는 0, 숫자가 아니거나 음수면 ARTIST_INVALID_CURSOR
+  private int parseCursor(String cursor) {
     if (cursor == null || cursor.isBlank()) {
-      return null;
+      return 0;
     }
     try {
-      return UUID.fromString(cursor).toString();
-    } catch (IllegalArgumentException exception) {
+      int offset = Integer.parseInt(cursor);
+      if (offset < 0) {
+        throw new BusinessException(ErrorCode.ARTIST_INVALID_CURSOR);
+      }
+      return offset;
+    } catch (NumberFormatException exception) {
       throw new BusinessException(ErrorCode.ARTIST_INVALID_CURSOR);
     }
+  }
+
+  // 쿼리와 같은 기준: 소문자, 공백·하이픈 제거. | 는 언어 구분자라 제거
+  private static String normalize(String keyword) {
+    return keyword.toLowerCase(Locale.ROOT).replaceAll("[\\s\\-|]", "");
   }
 
   // LIKE 특수문자를 문자 그대로 검색 (PostgreSQL 기본 이스케이프 문자 \)
