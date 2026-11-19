@@ -55,6 +55,7 @@ public enum ErrorCode {
   PLACE_KEYWORD_INVALID_ORDER(
       HttpStatus.BAD_REQUEST, "PLACE_KEYWORD_INVALID_ORDER", "모든 키워드를 한 번씩 포함해야 합니다"),
   PLACE_INVALID_CURSOR(HttpStatus.BAD_REQUEST, "PLACE_INVALID_CURSOR", "잘못된 커서 값입니다"),
+  PLAN_EXISTS(HttpStatus.CONFLICT, "PLAN_EXISTS", "이미 만든 일정이 있습니다"),
   PLACE_IN_USE(HttpStatus.CONFLICT, "PLACE_IN_USE", "일정에 포함된 장소는 삭제할 수 없습니다"),
   PLACE_INVALID_OPERATING_PERIOD(
       HttpStatus.BAD_REQUEST, "PLACE_INVALID_OPERATING_PERIOD", "운영 기간이 올바르지 않습니다"),

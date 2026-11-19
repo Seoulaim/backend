@@ -2,6 +2,7 @@ package com.seoulaim.domain.plan;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.BDDMockito.given;
 
 import com.seoulaim.domain.artist.entity.Artist;
@@ -20,10 +21,15 @@ import com.seoulaim.domain.place.repository.PlaceOpeningHourRepository;
 import com.seoulaim.domain.place.repository.PlaceRepository;
 import com.seoulaim.domain.plan.dto.CreatePlanRequest;
 import com.seoulaim.domain.plan.dto.PlanDetailResponse;
+import com.seoulaim.domain.plan.dto.PlanDetailResponse.PlanArtistTag;
+import com.seoulaim.domain.plan.dto.PlanDetailResponse.PlanBiasResponse;
 import com.seoulaim.domain.plan.dto.PlanDetailResponse.PlanDayResponse;
 import com.seoulaim.domain.plan.dto.PlanDetailResponse.PlanItemResponse;
 import com.seoulaim.domain.plan.dto.PlanSummaryResponse;
 import com.seoulaim.domain.plan.dto.RecommendDatesRequest;
+import com.seoulaim.domain.plan.entity.PlanDay;
+import com.seoulaim.domain.plan.entity.TravelPlan;
+import com.seoulaim.domain.plan.repository.PlanArtistRepository;
 import com.seoulaim.domain.plan.repository.PlanDayRepository;
 import com.seoulaim.domain.plan.repository.PlanItemRepository;
 import com.seoulaim.domain.plan.repository.TravelPlanRepository;
@@ -75,6 +81,7 @@ class PlanIntegrationTest {
   @Autowired private PlanItemRepository planItemRepository;
   @Autowired private PlanDayRepository planDayRepository;
   @Autowired private TravelPlanRepository travelPlanRepository;
+  @Autowired private PlanArtistRepository planArtistRepository;
   @Autowired private ArtistPlaceRepository artistPlaceRepository;
   @Autowired private PlaceEventRepository placeEventRepository;
   @Autowired private PlaceOpeningHourRepository placeOpeningHourRepository;
@@ -85,12 +92,14 @@ class PlanIntegrationTest {
 
   private UUID userId;
   private UUID sanId;
+  private UUID ateezId;
   private Place cafe;
 
   @BeforeEach
   void setUp() {
     planItemRepository.deleteAllInBatch();
     planDayRepository.deleteAllInBatch();
+    planArtistRepository.deleteAllInBatch();
     travelPlanRepository.deleteAllInBatch();
     artistPlaceRepository.deleteAllInBatch();
     placeEventRepository.deleteAllInBatch();
@@ -107,6 +116,7 @@ class PlanIntegrationTest {
         artistGroupRepository.save(ArtistGroup.create("ATEEZ", "에이티즈", null, null, null, null, 1));
     Artist san = artistRepository.save(Artist.create(ateez, "SAN", "산", null, null, null, null, 1));
     sanId = san.getId();
+    ateezId = ateez.getId();
 
     cafe =
         placeRepository.save(
@@ -332,8 +342,14 @@ class PlanIntegrationTest {
   @Test
   @DisplayName("일정 목록은 최신 생성순이고 nextCursor 로 다음 페이지를 이어서 조회한다")
   void findPlans_최신순_커서페이징() {
-    UUID older = createSamplePlan();
-    UUID newer = createSamplePlan();
+    // 제한 도입 전 데이터처럼 2개 보유한 상태
+    User user = userRepository.findById(userId).orElseThrow();
+    TravelPlan legacy =
+        travelPlanRepository.save(
+            TravelPlan.create(user, LocalDate.of(2026, 11, 2), LocalDate.of(2026, 11, 3)));
+    planDayRepository.save(PlanDay.create(legacy, 1, LocalDate.of(2026, 11, 2)));
+    UUID older = legacy.getId();
+    UUID newer = createSamplePlanIgnoringLimit();
 
     CursorPageResponse<PlanSummaryResponse> first = planService.findPlans(userId, null, 1);
     CursorPageResponse<PlanSummaryResponse> second =
@@ -358,6 +374,56 @@ class PlanIntegrationTest {
             .dates();
 
     assertThat(dates).containsExactly(LocalDate.of(2026, 10, 30), LocalDate.of(2026, 10, 31));
+  }
+
+  @Test
+  @DisplayName("일정 상세에 생성 때 고른 bias 와 장소 태그의 그룹·멤버 id 가 포함된다")
+  void getPlanDetail_bias와태그id() {
+    UUID planId = createSamplePlan();
+
+    PlanDetailResponse detail = planService.getPlanDetail(userId, planId);
+
+    assertThat(detail.biases())
+        .extracting(PlanBiasResponse::artistId, PlanBiasResponse::artistGroupId)
+        .containsExactly(tuple(sanId, ateezId));
+    PlanArtistTag tag = detail.days().getFirst().items().getFirst().place().artists().getFirst();
+    assertThat(tag.artistGroupId()).isEqualTo(ateezId);
+    // 어니언은 그룹 단위 연결
+    assertThat(tag.artistId()).isNull();
+  }
+
+  @Test
+  @DisplayName("일정이 이미 있으면 새로 만들 수 없고 PLAN_EXISTS 예외가 발생한다")
+  void createPlan_이미있음_예외() {
+    createSamplePlan();
+
+    assertThatThrownBy(this::createSamplePlan)
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.PLAN_EXISTS);
+    assertThat(travelPlanRepository.countByUserId(userId)).isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("일정을 삭제하면 다시 만들 수 있다")
+  void createPlan_삭제후재생성() {
+    UUID planId = createSamplePlan();
+    planService.deletePlan(userId, planId);
+
+    UUID recreated = createSamplePlan();
+
+    assertThat(recreated).isNotEqualTo(planId);
+    assertThat(planArtistRepository.count()).isEqualTo(1);
+  }
+
+  // 목록 테스트용: 기존 일정이 있어도 서비스 제한 없이 새 일정을 직접 생성
+  private UUID createSamplePlanIgnoringLimit() {
+    User user = userRepository.findById(userId).orElseThrow();
+    TravelPlan plan =
+        travelPlanRepository.save(
+            TravelPlan.create(user, LocalDate.of(2026, 11, 2), LocalDate.of(2026, 11, 3)));
+    planDayRepository.save(PlanDay.create(plan, 1, LocalDate.of(2026, 11, 2)));
+    return plan.getId();
   }
 
   // 11/02 하루, 어니언 1곳짜리 일정

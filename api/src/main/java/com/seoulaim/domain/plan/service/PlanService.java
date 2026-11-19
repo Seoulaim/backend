@@ -17,9 +17,11 @@ import com.seoulaim.domain.plan.dto.PlanSnapshot;
 import com.seoulaim.domain.plan.dto.PlanSummaryResponse;
 import com.seoulaim.domain.plan.dto.RecommendDatesRequest;
 import com.seoulaim.domain.plan.dto.RecommendDatesResponse;
+import com.seoulaim.domain.plan.entity.PlanArtist;
 import com.seoulaim.domain.plan.entity.PlanDay;
 import com.seoulaim.domain.plan.entity.PlanItem;
 import com.seoulaim.domain.plan.entity.TravelPlan;
+import com.seoulaim.domain.plan.repository.PlanArtistRepository;
 import com.seoulaim.domain.plan.repository.PlanDayRepository;
 import com.seoulaim.domain.plan.repository.PlanItemRepository;
 import com.seoulaim.domain.plan.repository.TravelPlanRepository;
@@ -38,6 +40,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -54,7 +57,8 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <ul>
  *   <li>날짜 기준은 KST
- *   <li>입력한 bias·키워드는 저장하지 않음
+ *   <li>입력한 bias 는 plan_artists 에 저장 (일정 bias 태그 기준), 키워드는 저장하지 않음
+ *   <li>사용자당 일정 1개, 있으면 PLAN_EXISTS
  * </ul>
  */
 @Service
@@ -65,10 +69,13 @@ public class PlanService {
   private static final ZoneId KST = ZoneId.of("Asia/Seoul");
   private static final int MAX_PERIOD_DAYS = 30;
   private static final String TITLE_SUFFIX = "'s Travel";
+  // 사용자당 보유 가능 일정 수 (요금제 도입 전 1개)
+  private static final int MAX_PLANS_PER_USER = 1;
 
   private final TravelPlanRepository travelPlanRepository;
   private final PlanDayRepository planDayRepository;
   private final PlanItemRepository planItemRepository;
+  private final PlanArtistRepository planArtistRepository;
   private final UserService userService;
   private final ArtistService artistService;
   private final UserBiasService userBiasService;
@@ -134,6 +141,15 @@ public class PlanService {
       throw new BusinessException(ErrorCode.PLAN_VISIT_DATE_OUT_OF_PERIOD);
     }
 
+    // 사용자 행 잠금 후 보유 개수 확인 → 동시 요청으로 2개 생성 방지
+    User user =
+        travelPlanRepository
+            .findUserForUpdate(userId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+    if (travelPlanRepository.countByUserId(userId) >= MAX_PLANS_PER_USER) {
+      throw new BusinessException(ErrorCode.PLAN_EXISTS);
+    }
+
     List<Artist> artists = artistService.getArtistsWithGroup(request.artistIds());
     List<UUID> keywordIds = request.keywordIdsOrEmpty();
     keywordService.validateKeywordsExist(keywordIds);
@@ -145,8 +161,8 @@ public class PlanService {
       throw new BusinessException(ErrorCode.PLAN_NO_CANDIDATE_PLACE);
     }
 
-    User user = userService.getUser(userId);
     TravelPlan plan = travelPlanRepository.save(TravelPlan.create(user, startDate, endDate));
+    savePlanArtists(plan, request.artistIds(), artists);
     int dayNumber = 1;
     for (Map.Entry<LocalDate, List<Stop>> entry : schedule.entrySet()) {
       PlanDay day = planDayRepository.save(PlanDay.create(plan, dayNumber++, entry.getKey()));
@@ -205,6 +221,7 @@ public class PlanService {
     return PlanDetailResponse.of(
         plan,
         titleOf(userId),
+        planArtistRepository.findAllWithArtistByPlanId(planId),
         days,
         itemsByDayId,
         placeService.findImageKeysByPlaceIds(placeIds),
@@ -239,8 +256,7 @@ public class PlanService {
   @Transactional
   public void deletePlan(UUID userId, UUID planId) {
     TravelPlan plan = getOwnedPlan(userId, planId);
-    planItemRepository.deleteAllByPlanId(planId);
-    planDayRepository.deleteAllByPlanId(planId);
+    deleteChildren(planId);
     travelPlanRepository.delete(plan);
   }
 
@@ -249,10 +265,25 @@ public class PlanService {
   public void deleteAllPlansOfUser(UUID userId) {
     List<TravelPlan> plans = travelPlanRepository.findAllByUserId(userId);
     for (TravelPlan plan : plans) {
-      planItemRepository.deleteAllByPlanId(plan.getId());
-      planDayRepository.deleteAllByPlanId(plan.getId());
+      deleteChildren(plan.getId());
     }
     travelPlanRepository.deleteAll(plans);
+  }
+
+  private void deleteChildren(UUID planId) {
+    planItemRepository.deleteAllByPlanId(planId);
+    planDayRepository.deleteAllByPlanId(planId);
+    planArtistRepository.deleteAllByPlanId(planId);
+  }
+
+  // 요청한 artistIds 순서대로 저장 (중복 id 는 한 번만)
+  private void savePlanArtists(TravelPlan plan, List<UUID> artistIds, List<Artist> artists) {
+    Map<UUID, Artist> artistsById =
+        artists.stream().collect(Collectors.toMap(Artist::getId, artist -> artist));
+    int order = 0;
+    for (UUID artistId : new LinkedHashSet<>(artistIds)) {
+      planArtistRepository.save(PlanArtist.create(plan, artistsById.get(artistId), order++));
+    }
   }
 
   // 아티스트 연결 + 키워드 일치 장소를 모아 점수 합산. 숨김 장소 제외
