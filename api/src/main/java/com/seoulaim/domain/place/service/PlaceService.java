@@ -139,6 +139,19 @@ public class PlaceService {
         : new HashSet<>(placeEventRepository.findPlaceIdsHavingEvents(placeIds));
   }
 
+  // 장소별 키워드 code. 키워드 없는 장소는 결과에 없음
+  public Map<UUID, Set<String>> findKeywordCodesByPlaceIds(Collection<UUID> placeIds) {
+    if (placeIds.isEmpty()) {
+      return Map.of();
+    }
+    return placeKeywordRepository.findAllWithKeywordByPlaceIdIn(placeIds).stream()
+        .collect(
+            Collectors.groupingBy(
+                placeKeyword -> placeKeyword.getPlace().getId(),
+                Collectors.mapping(
+                    placeKeyword -> placeKeyword.getKeyword().getCode(), Collectors.toSet())));
+  }
+
   // 장소별 요일 영업시간. 영업시간 없음인 장소는 결과에 없음
   public Map<UUID, Map<Weekday, PlaceOpeningHour>> findOpeningHoursByPlaceIds(
       Collection<UUID> placeIds) {

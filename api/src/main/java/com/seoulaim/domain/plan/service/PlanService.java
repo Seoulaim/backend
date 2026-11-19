@@ -291,16 +291,22 @@ public class PlanService {
     Set<UUID> periodLimitedIds = placeService.findPeriodLimitedPlaceIds(placeIds);
     Map<UUID, Map<Weekday, PlaceOpeningHour>> hoursByPlaceId =
         placeService.findOpeningHoursByPlaceIds(placeIds);
+    Map<UUID, Set<String>> keywordCodesByPlaceId =
+        placeService.findKeywordCodesByPlaceIds(placeIds);
 
     return places.values().stream()
         .map(
-            place ->
-                new Candidate(
-                    place,
-                    scores.get(place.getId()),
-                    eventsByPlaceId.getOrDefault(place.getId(), List.of()),
-                    periodLimitedIds.contains(place.getId()),
-                    hoursByPlaceId.getOrDefault(place.getId(), Map.of())))
+            place -> {
+              Set<String> codes = keywordCodesByPlaceId.getOrDefault(place.getId(), Set.of());
+              return new Candidate(
+                  place,
+                  scores.get(place.getId()),
+                  eventsByPlaceId.getOrDefault(place.getId(), List.of()),
+                  periodLimitedIds.contains(place.getId()),
+                  hoursByPlaceId.getOrDefault(place.getId(), Map.of()),
+                  PlaceKind.from(codes),
+                  PlaceKind.isPremium(codes));
+            })
         .toList();
   }
 
