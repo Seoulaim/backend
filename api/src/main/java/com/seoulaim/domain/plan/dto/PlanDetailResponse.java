@@ -5,6 +5,7 @@ import com.seoulaim.domain.place.dto.PlaceDetailResponse.Location;
 import com.seoulaim.domain.place.entity.ArtistPlace;
 import com.seoulaim.domain.place.entity.LocalizedText;
 import com.seoulaim.domain.place.entity.Place;
+import com.seoulaim.domain.plan.entity.PlanArtist;
 import com.seoulaim.domain.plan.entity.PlanDay;
 import com.seoulaim.domain.plan.entity.PlanItem;
 import com.seoulaim.domain.plan.entity.TravelPlan;
@@ -19,12 +20,30 @@ import java.util.UUID;
  *
  * <ul>
  *   <li>title: 저장값 아님, "{닉네임}'s Travel"
+ *   <li>biases: 일정 생성 때 고른 아티스트, 요청 순서. 이 기능 이전에 만든 일정은 빈 배열
  *   <li>days[].items: 방문 순서, 지도 경로도 이 순서로 연결
  *   <li>안쪽 record 이름은 Swagger 스키마 이름 → 다른 도메인과 겹치지 않게 Plan 접두사
  * </ul>
  */
 public record PlanDetailResponse(
-    UUID id, String title, LocalDate startDate, LocalDate endDate, List<PlanDayResponse> days) {
+    UUID id,
+    String title,
+    LocalDate startDate,
+    LocalDate endDate,
+    List<PlanBiasResponse> biases,
+    List<PlanDayResponse> days) {
+
+  public record PlanBiasResponse(
+      UUID artistId, String artistNameEn, UUID artistGroupId, String artistGroupNameEn) {
+
+    static PlanBiasResponse from(PlanArtist planArtist) {
+      return new PlanBiasResponse(
+          planArtist.getArtist().getId(),
+          planArtist.getArtist().getNameEn(),
+          planArtist.getArtist().getArtistGroup().getId(),
+          planArtist.getArtist().getArtistGroup().getNameEn());
+    }
+  }
 
   public record PlanDayResponse(int dayNumber, LocalDate visitDate, List<PlanItemResponse> items) {}
 
@@ -45,12 +64,18 @@ public record PlanDetailResponse(
       List<String> imageKeys,
       List<PlanArtistTag> artists) {}
 
-  // 그룹 단위 연결이면 artistNameEn null
-  public record PlanArtistTag(String artistGroupNameEn, String artistNameEn, String description) {}
+  // 그룹 단위 연결이면 artistId·artistNameEn null
+  public record PlanArtistTag(
+      UUID artistGroupId,
+      String artistGroupNameEn,
+      UUID artistId,
+      String artistNameEn,
+      String description) {}
 
   public static PlanDetailResponse of(
       TravelPlan plan,
       String title,
+      List<PlanArtist> planArtists,
       List<PlanDay> days,
       Map<UUID, List<PlanItem>> itemsByDayId,
       Map<UUID, List<String>> imageKeysByPlaceId,
@@ -67,7 +92,12 @@ public record PlanDetailResponse(
                             .toList()))
             .toList();
     return new PlanDetailResponse(
-        plan.getId(), title, plan.getStartDate(), plan.getEndDate(), dayResponses);
+        plan.getId(),
+        title,
+        plan.getStartDate(),
+        plan.getEndDate(),
+        planArtists.stream().map(PlanBiasResponse::from).toList(),
+        dayResponses);
   }
 
   private static PlanItemResponse toItem(
@@ -80,7 +110,9 @@ public record PlanDetailResponse(
             .map(
                 artistPlace ->
                     new PlanArtistTag(
+                        artistPlace.getArtistGroup().getId(),
                         artistPlace.getArtistGroup().getNameEn(),
+                        artistPlace.getArtist() == null ? null : artistPlace.getArtist().getId(),
                         artistPlace.getArtist() == null
                             ? null
                             : artistPlace.getArtist().getNameEn(),
