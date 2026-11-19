@@ -83,6 +83,11 @@ public class User extends BaseEntity {
     return user;
   }
 
+  // 소셜 가입. email 은 제공자가 인증한 이메일만, 없으면 null. 비밀번호 없음
+  public static User createWithSocial(String email, String nickname) {
+    return createWithEmail(email, null, nickname);
+  }
+
   public boolean canLogin() {
     return status == UserStatus.ACTIVE;
   }

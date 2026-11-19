@@ -7,6 +7,7 @@ import com.seoulaim.domain.place.service.PlaceFavoriteService;
 import com.seoulaim.domain.plan.service.PlanService;
 import com.seoulaim.domain.survey.service.SurveyService;
 import com.seoulaim.domain.user.entity.WithdrawnBy;
+import com.seoulaim.domain.user.repository.UserSocialAccountRepository;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
 import java.util.UUID;
@@ -38,9 +39,12 @@ public class UserWithdrawalService {
   private final DiaryService diaryService;
   private final SurveyService surveyService;
   private final AuthService authService;
+  private final UserSocialAccountRepository userSocialAccountRepository;
 
   @Transactional
   public void withdraw(UUID userId) {
+    // 소셜 연결 삭제 → 같은 소셜 계정으로 재가입 가능
+    userSocialAccountRepository.deleteAllByUserId(userId);
     if (userService.getUser(userId).isWithdrawn()) {
       return;
     }

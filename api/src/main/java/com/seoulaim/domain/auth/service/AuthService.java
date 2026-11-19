@@ -112,7 +112,8 @@ public class AuthService {
     refreshTokenRedisRepository.deleteAllByUserId(userId);
   }
 
-  private TokenResponse issueTokens(UUID userId) {
+  // 소셜 로그인(SocialAuthService)에서도 사용
+  public TokenResponse issueTokens(UUID userId) {
     IssuedToken accessToken = jwtTokenProvider.issueAccessToken(userId);
     IssuedToken refreshToken = jwtTokenProvider.issueRefreshToken(userId);
     refreshTokenRedisRepository.save(

@@ -108,6 +108,12 @@ public class UserService {
     return UserAccountInfo.from(getUser(userId));
   }
 
+  // 소셜 가입. 이메일 중복은 호출 전 자동 연결로 처리됨
+  @Transactional
+  public User createSocialUser(String email, String nickname) {
+    return userRepository.saveAndFlush(User.createWithSocial(email, nickname));
+  }
+
   @Transactional
   public User createUser(String email, String passwordHash, String nickname) {
     if (userRepository.existsByEmail(email)) {
