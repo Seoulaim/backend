@@ -134,6 +134,7 @@ class AdminDiaryControllerTest {
         .andExpect(jsonPath("$[0].name").value("My Diary"))
         .andExpect(jsonPath("$[0].free").value(true))
         .andExpect(jsonPath("$[0].paid").value(false))
+        .andExpect(jsonPath("$[0].appUnlocked").value(false))
         .andExpect(jsonPath("$[0].status").value("DRAFT"));
   }
 

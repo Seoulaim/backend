@@ -1,5 +1,6 @@
 package com.seoulaim.global.config;
 
+import com.seoulaim.global.common.ClientPlatform;
 import com.seoulaim.global.security.JwtAccessDeniedHandler;
 import com.seoulaim.global.security.JwtAuthenticationEntryPoint;
 import com.seoulaim.global.security.JwtAuthenticationFilter;
@@ -109,7 +110,8 @@ public class SecurityConfig {
     CorsConfiguration configuration = new CorsConfiguration();
     configuration.setAllowedOrigins(allowedOrigins);
     configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-    configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Admin-Key"));
+    configuration.setAllowedHeaders(
+        List.of("Authorization", "Content-Type", "X-Admin-Key", ClientPlatform.HEADER));
     // 웹에서 읽어야 하는 응답 헤더 (일정 생성 Location, 오류 추적 X-Trace-Id)
     configuration.setExposedHeaders(List.of("Location", "X-Trace-Id"));
     configuration.setMaxAge(3600L);

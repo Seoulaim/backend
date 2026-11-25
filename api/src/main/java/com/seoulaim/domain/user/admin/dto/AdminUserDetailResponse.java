@@ -42,6 +42,7 @@ public record AdminUserDetailResponse(
     Stats stats) {
 
   /**
+   * @param appUnlocked 앱에서 결제 없이 무료 범위를 넘겨 씀
    * @param finalized 완성 여부
    * @param deleted soft delete 됨
    */
@@ -50,6 +51,7 @@ public record AdminUserDetailResponse(
       String name,
       boolean free,
       boolean paid,
+      boolean appUnlocked,
       boolean finalized,
       Instant createdAt,
       Instant lastSavedAt,

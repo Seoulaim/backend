@@ -7,6 +7,7 @@ import java.util.UUID;
 /**
  * 어드민 회원 상세의 다이어리 1개. 삭제·미결제 다이어리도 포함한다. API 응답으로 직접 쓰지 않는다.
  *
+ * @param appUnlocked 앱에서 결제 없이 무료 범위를 넘겨 씀 (paid 와 별개)
  * @param finalized 완성(FINALIZED) 여부
  * @param finalizedAt 완성 시각 (completed_at)
  */
@@ -15,6 +16,7 @@ public record UserDiaryInfo(
     String name,
     boolean free,
     boolean paid,
+    boolean appUnlocked,
     boolean finalized,
     Instant createdAt,
     Instant lastSavedAt,
@@ -29,6 +31,7 @@ public record UserDiaryInfo(
         diary.getName(),
         diary.isFree(),
         diary.isPaid(),
+        diary.isAppUnlocked(),
         diary.isFinalized(),
         diary.getCreatedAt(),
         diary.getLastSavedAt(),

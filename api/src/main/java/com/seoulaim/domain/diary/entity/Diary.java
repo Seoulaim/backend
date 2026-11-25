@@ -42,6 +42,10 @@ public class Diary extends BaseEntity {
   @Column(name = "paid", nullable = false)
   private boolean paid;
 
+  // 앱에서 무료 범위를 넘겨 생성·저장·완성함 (#78). 결제 여부(paid)와 별개이며 웹에서도 결제 없이 쓸 수 있다
+  @Column(name = "app_unlocked", nullable = false)
+  private boolean appUnlocked;
+
   @Enumerated(EnumType.STRING)
   @Column(name = "status", nullable = false, length = 20)
   private DiaryStatus status;
@@ -128,6 +132,21 @@ public class Diary extends BaseEntity {
 
   public void markPaid() {
     this.paid = true;
+  }
+
+  /** 앱에서 무료 범위를 넘겨 썼다. 한 번 표시하면 되돌리지 않는다 (환불해도 유지). */
+  public void unlockByApp() {
+    this.appUnlocked = true;
+  }
+
+  /** 결제했거나 앱에서 풀려 더 결제할 것이 없다. */
+  public boolean isUnlocked() {
+    return paid || appUnlocked;
+  }
+
+  /** 결제 없이 spreadCount 개를 저장할 수 있는지: 결제됨, 앱에서 풀림, 무료 다이어리의 무료 범위 이내. */
+  public boolean canSaveWithoutPayment(int spreadCount, int freeSpreads) {
+    return isUnlocked() || (isFree && spreadCount <= freeSpreads);
   }
 
   /** 환불한 첫(무료) 다이어리: 결제만 되돌린다. 꾸민 내용은 남기고 앱이 무료 범위(2쪽)까지만 연다. */

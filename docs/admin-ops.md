@@ -132,7 +132,7 @@
 ```
 
 - `emailMasked`: 어드민 `lib/privacy.js` `maskEmail` 과 같은 규칙. 로컬파트 1~2자 → 첫 1자 + `**` (`a**@`), 3자 이상 → 앞 2자 + 나머지 길이만큼 `*`(최소 2개, `ab***@`). 탈퇴 회원은 `null`
-- `diaryCount`: 삭제되지 않았고 무료이거나 결제된 다이어리 수. `paidPaymentCount`: 지금 `paid` 인 결제 수 (환불 제외)
+- `diaryCount`: 삭제되지 않았고 무료이거나 결제됐거나 앱에서 풀린 다이어리 수. `paidPaymentCount`: 지금 `paid` 인 결제 수 (환불 제외)
 - `lastLoginAt` 은 없다 (users 에 로그인 시각 컬럼이 없음)
 
 ### 상세
@@ -162,7 +162,7 @@
   ],
   "diaries": [
     {
-      "id": "019a4c10-...", "name": "My Diary", "free": false, "paid": true, "finalized": true,
+      "id": "019a4c10-...", "name": "My Diary", "free": false, "paid": true, "appUnlocked": false, "finalized": true,
       "createdAt": "2026-11-04T02:50:00Z", "lastSavedAt": "2026-11-05T00:00:00Z", "saveCount": 7,
       "finalizedAt": "2026-11-05T00:00:00Z", "downloadCount": 1, "deleted": false
     }
@@ -189,7 +189,7 @@
 | `withdrawReason` | 강퇴 사유. 본인 탈퇴는 `null` |
 | `marketingConsent` / `marketingUpdatedAt` | 마케팅 수신 동의 / 마지막 변경 시각 (가입 후 안 바꿨으면 `null`). users 에 있는 동의 관련 값은 이것과 `pushEnabled` 뿐 (약관·개인정보·연령 동의 컬럼 없음) |
 | `biases` | 현재 최애 멤버(그룹 포함). 탈퇴하면 삭제되어 `[]` |
-| `diaries` | 삭제·미결제 다이어리 포함 최신순 |
+| `diaries` | 삭제·미결제 다이어리 포함 최신순. `appUnlocked` = 앱에서 결제 없이 무료 범위를 넘겨 씀 (#78) |
 | `payments` | `paid`·`refunded` 결제 최신순 (대기·실패는 결제 관리에서) |
 | `inquiries` | 환불 포함 모든 문의 최신순. `refundStatus` 는 환불 문의만 |
 
@@ -284,8 +284,8 @@
 | `survey.responsesInRange` | 기간 내 응답 수 |
 | `members.total` | 탈퇴하지 않은 회원 (정지 포함) |
 | `members.newInRange` / `withdrawnInRange` | 기간 내 가입 / 탈퇴(본인·어드민 강퇴 모두, `withdrawn_at` 기준) |
-| `diaries.total` | 회원 앱 목록에 보이는 다이어리 = 삭제 안 됐고 무료이거나 결제됨 |
-| `diaries.createdInRange` | 기간 내 생성 + 무료이거나 결제됨 (이후 삭제된 것 포함, 결제 안 한 빈 다이어리 제외) |
+| `diaries.total` | 회원 앱 목록에 보이는 다이어리 = 삭제 안 됐고 무료이거나 결제됐거나 앱에서 풀림(`appUnlocked`) |
+| `diaries.createdInRange` | 기간 내 생성 + 무료이거나 결제됐거나 앱에서 풀림 (이후 삭제된 것 포함, 결제 안 한 빈 다이어리 제외) |
 | `diaries.finalized` / `finalizedInRange` | 보이는 것 중 완성 / 기간 내 완성(`completed_at`, 이후 삭제 포함) |
 | `diaries.paid` | 보이는 것 중 결제된 다이어리 (환불되면 빠진다) |
 | `sales.paid*`, `methodCounts` | 기간 내 **승인 시각(`paid_at`)** 기준. 나중에 환불된 결제도 포함 |

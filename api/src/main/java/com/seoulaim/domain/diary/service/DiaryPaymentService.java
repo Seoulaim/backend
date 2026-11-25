@@ -87,7 +87,8 @@ public class DiaryPaymentService {
 
   public DiaryCheckoutResponse getCheckout(UUID userId, UUID diaryId) {
     Diary diary = diaryService.findMyDiary(userId, diaryId);
-    if (diary.isPaid()) {
+    // 앱에서 풀린 다이어리(appUnlocked)도 더 결제할 것이 없다
+    if (diary.isUnlocked()) {
       throw new BusinessException(ErrorCode.PAYMENT_ALREADY_PAID);
     }
     List<DiaryCheckoutResponse.PaymentMethod> methods =
@@ -113,7 +114,7 @@ public class DiaryPaymentService {
     if (!Boolean.TRUE.equals(request.refundConsent())) {
       throw new BusinessException(ErrorCode.PAYMENT_CONSENT_REQUIRED);
     }
-    if (diary.isPaid()) {
+    if (diary.isUnlocked()) {
       throw new BusinessException(ErrorCode.PAYMENT_ALREADY_PAID);
     }
     DiaryPaymentMethod method = parseMethod(request.method());

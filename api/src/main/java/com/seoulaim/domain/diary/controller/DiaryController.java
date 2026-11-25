@@ -10,9 +10,11 @@ import com.seoulaim.domain.diary.dto.DiaryNewTermsResponse;
 import com.seoulaim.domain.diary.dto.DiarySpreadsRequest;
 import com.seoulaim.domain.diary.dto.DiarySummaryResponse;
 import com.seoulaim.domain.diary.service.DiaryService;
+import com.seoulaim.global.common.ClientPlatform;
 import com.seoulaim.global.common.CurrentUserId;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -36,26 +38,40 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/diaries")
 public class DiaryController {
 
+  private static final String PLATFORM_DESCRIPTION = "android | ios 면 앱(결제 없이 사용). 없거나 다른 값이면 웹";
+
   private final DiaryService diaryService;
 
-  @Operation(summary = "내 다이어리 목록 (무료이거나 결제된 것만, 최신순)")
+  @Operation(summary = "내 다이어리 목록 (무료이거나 결제됐거나 앱에서 풀린 것만, 최신순)")
   @GetMapping
   public List<DiarySummaryResponse> getMyDiaries(
       @Parameter(hidden = true) @CurrentUserId UUID userId) {
     return diaryService.getMyDiaries(userId);
   }
 
-  @Operation(summary = "새 다이어리 생성 조건 (다음 다이어리 무료 여부, 가격)")
+  @Operation(summary = "새 다이어리 생성 조건 (다음 다이어리 무료 여부, 가격. 앱은 항상 무료)")
   @GetMapping("/new-terms")
-  public DiaryNewTermsResponse getNewTerms(@Parameter(hidden = true) @CurrentUserId UUID userId) {
-    return diaryService.getNewTerms(userId);
+  public DiaryNewTermsResponse getNewTerms(
+      @Parameter(hidden = true) @CurrentUserId UUID userId,
+      @Parameter(
+              in = ParameterIn.HEADER,
+              name = ClientPlatform.HEADER,
+              description = PLATFORM_DESCRIPTION)
+          ClientPlatform platform) {
+    return diaryService.getNewTerms(userId, platform);
   }
 
-  @Operation(summary = "다이어리 생성 (첫 다이어리만 무료)")
+  @Operation(summary = "다이어리 생성 (첫 다이어리만 무료. 앱은 모두 무료)")
   @PostMapping
   @ResponseStatus(HttpStatus.CREATED)
-  public DiaryCreateResponse createDiary(@Parameter(hidden = true) @CurrentUserId UUID userId) {
-    return diaryService.create(userId);
+  public DiaryCreateResponse createDiary(
+      @Parameter(hidden = true) @CurrentUserId UUID userId,
+      @Parameter(
+              in = ParameterIn.HEADER,
+              name = ClientPlatform.HEADER,
+              description = PLATFORM_DESCRIPTION)
+          ClientPlatform platform) {
+    return diaryService.create(userId, platform);
   }
 
   @Operation(summary = "다이어리 이름 변경 (1~30자)")
@@ -89,8 +105,13 @@ public class DiaryController {
   public void saveSpreads(
       @Parameter(hidden = true) @CurrentUserId UUID userId,
       @PathVariable UUID diaryId,
-      @Valid @RequestBody DiarySpreadsRequest request) {
-    diaryService.saveSpreads(userId, diaryId, request);
+      @Valid @RequestBody DiarySpreadsRequest request,
+      @Parameter(
+              in = ParameterIn.HEADER,
+              name = ClientPlatform.HEADER,
+              description = PLATFORM_DESCRIPTION)
+          ClientPlatform platform) {
+    diaryService.saveSpreads(userId, diaryId, request, platform);
   }
 
   @Operation(summary = "편집 데이터 저장 후 완성 처리 (이후 편집 불가)")
@@ -99,8 +120,13 @@ public class DiaryController {
   public void finalizeDiary(
       @Parameter(hidden = true) @CurrentUserId UUID userId,
       @PathVariable UUID diaryId,
-      @Valid @RequestBody DiarySpreadsRequest request) {
-    diaryService.finalizeDiary(userId, diaryId, request);
+      @Valid @RequestBody DiarySpreadsRequest request,
+      @Parameter(
+              in = ParameterIn.HEADER,
+              name = ClientPlatform.HEADER,
+              description = PLATFORM_DESCRIPTION)
+          ClientPlatform platform) {
+    diaryService.finalizeDiary(userId, diaryId, request, platform);
   }
 
   @Operation(summary = "완성 페이지 이미지 등록 (멱등. 이미 있으면 기존 key 반환)")
