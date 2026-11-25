@@ -67,6 +67,7 @@ public record AdminRefundRequestResponse(
 
   /**
    * @param first 회원의 첫(무료) 다이어리
+   * @param appUnlocked 앱에서 결제 없이 무료 범위를 넘겨 씀 (환불 판단 참고용. 정책 판정에는 쓰지 않는다)
    * @param saveCount 편집 데이터 저장 횟수
    * @param photoCount 마지막 저장 시점의 등록 사진 수
    * @param pageKeys 완성 페이지 key. 없으면 []
@@ -78,6 +79,7 @@ public record AdminRefundRequestResponse(
       UUID id,
       String name,
       boolean first,
+      boolean appUnlocked,
       int pages,
       Instant completedAt,
       Instant createdAt,
@@ -149,6 +151,7 @@ public record AdminRefundRequestResponse(
         diary.id(),
         diary.name(),
         diary.first(),
+        diary.appUnlocked(),
         diary.pages(),
         diary.completedAt(),
         diary.createdAt(),

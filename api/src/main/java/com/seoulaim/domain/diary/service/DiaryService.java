@@ -23,6 +23,7 @@ import com.seoulaim.domain.diary.repository.DiaryDownloadRepository;
 import com.seoulaim.domain.diary.repository.DiaryRepository;
 import com.seoulaim.domain.file.dto.FileDetail;
 import com.seoulaim.domain.file.service.FileService;
+import com.seoulaim.global.common.ClientPlatform;
 import com.seoulaim.global.config.DiaryProperties;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
@@ -63,21 +64,32 @@ public class DiaryService {
   private final ObjectMapper objectMapper;
   private final Clock clock;
 
-  /** 삭제되지 않았고 무료이거나 결제된 다이어리만 최신순. 미결제 유료 다이어리는 결제 전이라 숨긴다. */
+  /** 삭제되지 않았고 무료이거나 결제됐거나 앱에서 풀린 다이어리만 최신순. 미결제 유료 다이어리는 결제 전이라 숨긴다. */
   public List<DiarySummaryResponse> getMyDiaries(UUID userId) {
     return diaryRepository.findVisibleByUserId(userId).stream()
         .map(DiarySummaryResponse::from)
         .toList();
   }
 
-  public DiaryNewTermsResponse getNewTerms(UUID userId) {
+  /** 앱은 항상 무료. 웹은 첫 다이어리만 무료. */
+  public DiaryNewTermsResponse getNewTerms(UUID userId, ClientPlatform platform) {
+    if (platform.isApp()) {
+      return new DiaryNewTermsResponse(true, 0);
+    }
     return new DiaryNewTermsResponse(isNextFree(userId), diaryProperties.price());
   }
 
-  /** 첫 다이어리(삭제한 것 포함)만 무료. 이후는 결제 전까지 저장할 수 없는 유료 다이어리로 만든다. */
+  /**
+   * 첫 다이어리(삭제한 것 포함)만 무료. 이후는 결제 전까지 저장할 수 없는 유료 다이어리로 만든다.
+   *
+   * <p>앱에서 만든 두 번째 이후 다이어리는 바로 풀어 준다. 그래야 저장 전에도 목록에 보인다.
+   */
   @Transactional
-  public DiaryCreateResponse create(UUID userId) {
+  public DiaryCreateResponse create(UUID userId, ClientPlatform platform) {
     Diary diary = Diary.create(userId, isNextFree(userId));
+    if (platform.isApp() && !diary.isFree()) {
+      diary.unlockByApp();
+    }
     try {
       // 무료 다이어리 동시 생성은 (user_id) WHERE is_free partial unique 인덱스로 막는다
       diaryRepository.saveAndFlush(diary);
@@ -117,16 +129,20 @@ public class DiaryService {
   }
 
   @Transactional
-  public void saveSpreads(UUID userId, UUID diaryId, DiarySpreadsRequest request) {
+  public void saveSpreads(
+      UUID userId, UUID diaryId, DiarySpreadsRequest request, ClientPlatform platform) {
     Diary diary = findMyDiary(userId, diaryId);
-    EditData data = prepareEditData(userId, diary, request);
+    EditData data = prepareEditData(userId, diary, request, platform);
+    unlockIfNeeded(diary, data, platform);
     diary.saveSpreads(data.spreads(), data.placePhotos(), data.photoCount(), clock.instant());
   }
 
   @Transactional
-  public void finalizeDiary(UUID userId, UUID diaryId, DiarySpreadsRequest request) {
+  public void finalizeDiary(
+      UUID userId, UUID diaryId, DiarySpreadsRequest request, ClientPlatform platform) {
     Diary diary = findMyDiary(userId, diaryId);
-    EditData data = prepareEditData(userId, diary, request);
+    EditData data = prepareEditData(userId, diary, request, platform);
+    unlockIfNeeded(diary, data, platform);
     diary.finalizeWith(data.spreads(), data.placePhotos(), data.photoCount(), clock.instant());
   }
 
@@ -199,7 +215,9 @@ public class DiaryService {
   }
 
   // 저장 허용 조건 → 형태·크기 검증 → 사진 파일 LINKED 순서
-  private EditData prepareEditData(UUID userId, Diary diary, DiarySpreadsRequest request) {
+  // 앱 요청은 결제·무료 범위 검사를 하지 않는다 (나머지 검증은 같다)
+  private EditData prepareEditData(
+      UUID userId, Diary diary, DiarySpreadsRequest request, ClientPlatform platform) {
     if (diary.isFinalized()) {
       throw new BusinessException(ErrorCode.DIARY_FINALIZED);
     }
@@ -208,7 +226,7 @@ public class DiaryService {
     if (!spreads.isArray()) {
       throw invalid("spreads", "배열이어야 합니다");
     }
-    if (!diary.isPaid() && !(diary.isFree() && spreads.size() <= diaryProperties.freeSpreads())) {
+    if (!platform.isApp() && !canSaveWithoutPayment(diary, spreads.size())) {
       throw new BusinessException(ErrorCode.DIARY_PAYMENT_REQUIRED);
     }
     Map<UUID, String> photoKeys = parsePlacePhotos(placePhotos);
@@ -229,6 +247,17 @@ public class DiaryService {
         objectMapper.convertValue(spreads, SPREADS_TYPE),
         objectMapper.convertValue(placePhotos, PLACE_PHOTOS_TYPE),
         photoCount);
+  }
+
+  private boolean canSaveWithoutPayment(Diary diary, int spreadCount) {
+    return diary.canSaveWithoutPayment(spreadCount, diaryProperties.freeSpreads());
+  }
+
+  // 앱에서 결제 조건을 못 채운 저장만 표시한다 (웹은 prepareEditData 에서 이미 402)
+  private void unlockIfNeeded(Diary diary, EditData data, ClientPlatform platform) {
+    if (platform.isApp() && !canSaveWithoutPayment(diary, data.spreads().size())) {
+      diary.unlockByApp();
+    }
   }
 
   // parsePlacePhotos 로 형태를 검증한 뒤 호출. 중복 fileId 도 항목마다 센다

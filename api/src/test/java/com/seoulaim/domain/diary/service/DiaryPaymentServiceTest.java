@@ -532,6 +532,42 @@ class DiaryPaymentServiceTest {
   }
 
   @Test
+  @DisplayName("앱에서 풀린(appUnlocked) 다이어리는 결제 생성·결제 화면 모두 409 PAYMENT_ALREADY_PAID")
+  void createPayment_appUnlocked_409() {
+    Diary diary = Diary.create(USER_ID, true);
+    diary.unlockByApp();
+    givenMyDiary(diary);
+
+    assertThatThrownBy(
+            () ->
+                diaryPaymentService.createPayment(
+                    USER_ID, diary.getId(), new DiaryPaymentCreateRequest(null, true)))
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.PAYMENT_ALREADY_PAID);
+    assertThatThrownBy(() -> diaryPaymentService.getCheckout(USER_ID, diary.getId()))
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.PAYMENT_ALREADY_PAID);
+    verify(diaryPaymentRepository, never()).save(any());
+  }
+
+  @Test
+  @DisplayName("환불: appUnlocked 표시는 환불해도 유지되고 환불 정보에 포함된다")
+  void refund_appUnlocked_유지() {
+    Diary first = Diary.create(USER_ID, true);
+    first.unlockByApp();
+    first.markPaid();
+    DiaryPayment payment = givenLockedPaidPayment(first);
+    given(paymentGateway.cancel("pk", CANCEL_REASON))
+        .willReturn(PaymentCancelResult.success("tx_1", null, "{}"));
+
+    PaymentRefundInfo info = diaryPaymentService.refund(payment.getId(), CANCEL_REASON);
+
+    assertThat(first.isPaid()).isFalse();
+    assertThat(first.isAppUnlocked()).isTrue();
+    assertThat(info.diary().appUnlocked()).isTrue();
+  }
+
+  @Test
   @DisplayName("환불: 두 번째 이후 다이어리는 soft delete 한다")
   void refund_두번째다이어리_softDelete() {
     Diary second = Diary.create(USER_ID, false);

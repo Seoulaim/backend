@@ -147,7 +147,7 @@ iOS                                API 서버                          토스
 - `item.price` 는 원화 가격 (하위 호환). 통화별 가격은 `item.prices`
 - 외화 MID 키가 설정되지 않은 서버에서는 `PAYPAL` 항목과 `prices.USD` 가 빠진다 (7절)
 - #59 전에는 결제수단 id 가 `TOSS` 였다. 이제 `CARD` | `PAYPAL`
-- 이미 결제된 다이어리면 409 `PAYMENT_ALREADY_PAID`
+- 이미 결제됐거나 앱에서 풀린(`appUnlocked`) 다이어리면 409 `PAYMENT_ALREADY_PAID` (9절)
 
 ## 2. 결제 생성
 
@@ -206,7 +206,7 @@ iOS                                API 서버                          토스
 | 오류 코드 | 상태 | 조건 |
 |---|---|---|
 | `PAYMENT_CONSENT_REQUIRED` | 400 | `refundConsent` 가 `true` 가 아님 (동의 시각을 `refund_consent_at` 에 저장) |
-| `PAYMENT_ALREADY_PAID` | 409 | 이미 결제된 다이어리 |
+| `PAYMENT_ALREADY_PAID` | 409 | 이미 결제됐거나 앱에서 풀린(`appUnlocked`) 다이어리 |
 | `PAYMENT_INVALID_METHOD` | 400 | `method` 가 `CARD`·`PAYPAL` 이 아님 |
 | `PAYMENT_METHOD_UNAVAILABLE` | 400 | 외화 MID 키가 없는 서버에서 `PAYPAL` |
 | `DIARY_NOT_FOUND` | 404 | 없음·남의 것·삭제됨 |
@@ -383,3 +383,14 @@ Help Center: https://seoulaim.com/mypage/inquiry
 
 Seoulaim
 ```
+
+## 9. 앱 무료 다이어리 — #78
+
+앱(안드로이드·iOS)에서는 다이어리를 결제 없이 쓴다. 앱은 결제 화면을 띄우지 않는다. 헤더·저장 규칙은 `docs/diary-flow.md` 6절.
+
+- 앱에서 무료 범위를 넘겨 쓴 다이어리는 `appUnlocked=true` (결제 행은 만들지 않고 `paid` 도 false 그대로)
+- `appUnlocked` 다이어리의 `GET /diaries/{id}/checkout`, `POST /diaries/{id}/payments` → 409 `PAYMENT_ALREADY_PAID` (더 결제할 것이 없음)
+- 결제 API 는 `X-Client-Platform` 을 보지 않는다. 웹의 결제 생성·승인·환불은 기존과 같다
+- 웹에서 결제를 만들어 둔 사이에 앱이 다이어리를 풀었다면, **이미 만든 결제의 승인(confirm)은 막지 않는다** (토스 인증까지 끝난 결제를 서버가 버리지 않는다). 이때 `paid` 와 `appUnlocked` 가 둘 다 true 가 되고, 환불은 기존 정책대로 판단한다
+- 환불: 첫(무료) 다이어리는 `paid=false` 가 되지만 `appUnlocked` 는 유지되므로 계속 쓸 수 있다. 두 번째 이후는 기존대로 soft delete
+- 어드민 환불 상세 `payment.diary.appUnlocked` 는 참고용 표시다. `policy`·`refundWithinPolicy` 판정에는 쓰지 않는다

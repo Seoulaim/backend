@@ -1,6 +1,7 @@
 package com.seoulaim.global.config;
 
 import com.seoulaim.global.common.AdminKeyInterceptor;
+import com.seoulaim.global.common.ClientPlatformArgumentResolver;
 import com.seoulaim.global.common.CurrentUserIdArgumentResolver;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
   @Override
   public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
     resolvers.add(currentUserIdArgumentResolver);
+    // X-Client-Platform 헤더 → ClientPlatform 파라미터 (상태 없음)
+    resolvers.add(new ClientPlatformArgumentResolver());
   }
 
   @Override

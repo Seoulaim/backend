@@ -2,7 +2,7 @@
 
 다이어리는 회원이 앱에서 만들고 편집하는 디지털 다이어리다. **주문(order)을 거치지 않는다.** 첫 다이어리는 무료(앞 2 spread 까지), 그 외는 다이어리 단위로 결제한 뒤 편집한다. 서버는 편집 데이터를 해석·렌더링하지 않고 그대로 저장·반환한다.
 
-헤더: 모든 요청에 `Authorization: Bearer <access token>`. 경로는 모두 `/api/v1` 하위다.
+헤더: 모든 요청에 `Authorization: Bearer <access token>`. 앱(안드로이드·iOS)은 `X-Client-Platform: android|ios` 도 보낸다 (6절). 경로는 모두 `/api/v1` 하위다.
 
 ## 흐름
 
@@ -49,6 +49,7 @@
     "name": "My Diary",
     "free": true,
     "paid": false,
+    "appUnlocked": false,
     "thumbnailKey": "diary/2026/11/019a4c55-....jpg",
     "lastEditedAt": "2026-11-03T03:10:00Z",
     "completedAt": "2026-11-03T03:20:00Z"
@@ -56,7 +57,8 @@
 ]
 ```
 
-- 삭제되지 않았고 `free` 이거나 `paid` 인 것만, 생성 최신순
+- 삭제되지 않았고 `free`·`paid`·`appUnlocked` 중 하나라도 true 인 것만, 생성 최신순
+- `appUnlocked`: 앱에서 무료 범위를 넘겨 써서 결제 없이 편집·완성할 수 있음 (6절)
 - `thumbnailKey` 는 완성 페이지 첫 장. 완성 전이면 `null`
 
 ### 이름 변경·삭제
@@ -172,7 +174,7 @@
 
 ```json
 {
-  "diary": { "id": "019a4c10-...", "name": "My Diary", "finalized": false, "free": true, "paid": false },
+  "diary": { "id": "019a4c10-...", "name": "My Diary", "finalized": false, "free": true, "paid": false, "appUnlocked": false },
   "pageKeys": null,
   "spreads": [ { "templateId": "019a4b2c-...", "left": { }, "right": { } } ],
   "placePhotos": { "019a3f00-...": [ { "id": "019a4c20-...", "key": "diary/2026/11/019a4c20-....jpg" } ] },
@@ -212,7 +214,7 @@ POST /api/v1/files/presigned-upload
 | 오류 코드 | 상태 | 조건 |
 |---|---|---|
 | `DIARY_FINALIZED` | 409 | 이미 완성(finalize)한 다이어리 |
-| `DIARY_PAYMENT_REQUIRED` | 402 | 결제 전인데, 무료 다이어리가 아니거나 `spreads` 가 무료 범위(2개)를 넘음 → 결제 화면으로 |
+| `DIARY_PAYMENT_REQUIRED` | 402 | (웹 요청) 결제 전이고 `appUnlocked` 도 아닌데, 무료 다이어리가 아니거나 `spreads` 가 무료 범위(2개)를 넘음 → 결제 화면으로. 앱 요청에는 나오지 않는다 |
 | `DIARY_CONTENT_TOO_LARGE` | 400 | `spreads` + `placePhotos` 직렬화 크기 2MB 초과 |
 | `COMMON_INVALID_REQUEST` | 400 | 필드 누락, `spreads` 가 배열 아님, `placePhotos` 형태 오류, 없는 fileId / 내가 올리지 않은 fileId / `key` 가 파일의 s3Key 와 다름 (`fields.placePhotos`) |
 | `DIARY_NOT_FOUND` | 404 | 없음·남의 것·삭제됨 |
@@ -268,3 +270,46 @@ POST /api/v1/files/presigned-upload
 ## 5. 결제
 
 유료 다이어리 결제와 무료 다이어리의 추가 spread 결제는 `docs/payment-flow.md` 의 "다이어리 결제" 를 따른다. 결제가 끝나면 다이어리는 `paid=true` 가 되어 spread 수 제한 없이 저장할 수 있다.
+
+## 6. 앱 다이어리 무료 — #78
+
+다이어리는 **웹에서는 유료, 앱(안드로이드·iOS)에서는 무료**다. 앱은 모든 요청에 헤더를 보낸다.
+
+```
+X-Client-Platform: android
+X-Client-Platform: ios
+```
+
+- 앞뒤 공백·대소문자는 무시한다. 헤더가 없거나 `web`·그 밖의 값이면 **웹**으로 취급한다 (오류 없음)
+- 웹앱은 보낼 필요가 없다. 보내면 `web`. CORS preflight 에서 이 헤더를 허용한다
+- 클라이언트가 스스로 밝히는 값이라 위조할 수 있다. 서버는 검증하지 않는다
+
+| API | 웹 (기존과 같음) | 앱 |
+|---|---|---|
+| `GET /diaries/new-terms` | `{ free: 첫 다이어리 여부, price: 3000 }` | 항상 `{ "free": true, "price": 0 }` |
+| `POST /diaries` (첫 번째) | `free=true` | `free=true` (같음. 계정의 무료 1권을 쓴다) |
+| `POST /diaries` (두 번째 이후) | `free=false, paid=false` → 결제 전까지 목록에 없고 저장 402 | `free=false, paid=false, appUnlocked=true` → 바로 목록에 나오고 저장된다 |
+| `PUT /diaries/{id}/spreads`, `POST /diaries/{id}/finalize` | 결제 조건을 못 채우면 402 | 402 없음. 조건을 못 채운 저장이면 `appUnlocked=true` 로 표시 |
+| 나머지 (목록·에디터·완성 페이지·다운로드·이름·삭제) | 플랫폼과 무관 | 플랫폼과 무관 |
+
+결제 조건 (웹 요청에만 검사): `paid || appUnlocked || (free && spreads.length ≤ 2)`
+
+- `appUnlocked` 가 된 다이어리는 이후 **웹에서도** 결제 없이 편집·완성·다운로드된다. 웹앱은 `paid` 만 보지 말고 `paid || appUnlocked` 로 잠금을 판단해야 한다
+- 한 번 켜진 `appUnlocked` 는 꺼지지 않는다 (환불해도 유지)
+- 무료 범위 안의 저장, 이미 결제된 다이어리의 저장은 앱이어도 `appUnlocked` 를 켜지 않는다
+- 409 `DIARY_FINALIZED`, 2MB 제한, 사진 검증 등 나머지 규칙은 앱도 같다
+- `appUnlocked` 다이어리의 결제 화면·결제 생성은 409 `PAYMENT_ALREADY_PAID` (`docs/payment-flow.md` 9절)
+
+예시 (앱에서 무료 다이어리에 3 spread 저장):
+
+```
+PUT /api/v1/diaries/019a4c10-.../spreads
+Authorization: Bearer ...
+X-Client-Platform: ios
+
+{ "spreads": [ {}, {}, {} ], "placePhotos": {} }
+→ 204
+
+GET /api/v1/diaries
+→ [{ "id": "019a4c10-...", "name": "My Diary", "free": true, "paid": false, "appUnlocked": true, ... }]
+```

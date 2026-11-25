@@ -22,12 +22,21 @@ public record DiaryEditorResponse(
   public static DiaryEditorResponse of(Diary diary, List<DiaryUsedTemplateResponse> usedTemplates) {
     return new DiaryEditorResponse(
         new DiaryInfo(
-            diary.getId(), diary.getName(), diary.isFinalized(), diary.isFree(), diary.isPaid()),
+            diary.getId(),
+            diary.getName(),
+            diary.isFinalized(),
+            diary.isFree(),
+            diary.isPaid(),
+            diary.isAppUnlocked()),
         diary.getPageKeys(),
         diary.getSpreads(),
         diary.getPlacePhotos(),
         usedTemplates);
   }
 
-  public record DiaryInfo(UUID id, String name, boolean finalized, boolean free, boolean paid) {}
+  /**
+   * @param appUnlocked 앱에서 무료 범위를 넘겨 써서 결제 없이 편집·완성할 수 있음 (paid 와 별개)
+   */
+  public record DiaryInfo(
+      UUID id, String name, boolean finalized, boolean free, boolean paid, boolean appUnlocked) {}
 }

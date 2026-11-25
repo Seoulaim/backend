@@ -35,6 +35,7 @@ public record PaymentRefundInfo(
 
   /**
    * @param first 회원의 첫(무료) 다이어리 (is_free)
+   * @param appUnlocked 앱에서 결제 없이 무료 범위를 넘겨 씀 (환불 판단 참고용)
    * @param pages 편집 중이면 spreads 수, 완성 후에는 완성 페이지 수
    * @param pageKeys 완성 페이지 key. 없으면 빈 배열
    * @param downloads 최신순
@@ -43,6 +44,7 @@ public record PaymentRefundInfo(
       UUID id,
       String name,
       boolean first,
+      boolean appUnlocked,
       int pages,
       Instant completedAt,
       boolean deleted,
@@ -59,6 +61,7 @@ public record PaymentRefundInfo(
           diary.getId(),
           diary.getName(),
           diary.isFree(),
+          diary.isAppUnlocked(),
           diary.pageCount(),
           diary.getCompletedAt(),
           diary.isDeleted(),

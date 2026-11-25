@@ -159,6 +159,7 @@ Help Center(MR03)에서 회원이 남긴 문의를 어드민이 이메일로 답
         "id": "019a4c10-...",
         "name": "My Diary",
         "first": false,
+        "appUnlocked": false,
         "pages": 4,
         "completedAt": null,
         "createdAt": "2026-11-04T02:50:00Z",
@@ -191,6 +192,7 @@ Help Center(MR03)에서 회원이 남긴 문의를 어드민이 이메일로 답
 | `refund.exception` | 정책 밖 승인 사유 `{ reason, memo }`, 없으면 `null` |
 | `payment.orderId` | 토스 orderId (= 결제 orderNumber). 토스 대시보드 대조용 |
 | `payment.diary.first` | 회원의 첫(무료) 다이어리 |
+| `payment.diary.appUnlocked` | 앱에서 결제 없이 무료 범위를 넘겨 쓴 다이어리 (#78). 참고용이며 정책 판정에는 쓰지 않는다 |
 | `payment.diary.pages` | 편집 중이면 spreads 수, 완성 후에는 완성 페이지 수 |
 | `refundWithinPolicy` | **신청 시점** 서버 판정. 이후 편집·경과일과 무관하게 이 값으로 승인 조건을 본다 |
 | `deadline` | 처리 기한 = 신청일(KST) + 영업일 3일 (환불 정책 제6조). 주말만 건너뛰고 공휴일은 반영하지 않는다 |
@@ -201,7 +203,7 @@ Help Center(MR03)에서 회원이 남긴 문의를 어드민이 이메일로 답
 | `payment.diary.downloads` | `[{ format: "PDF"|"JPG", pageCount, at }]` 최신순 |
 | `payment.diary.deleted` | soft delete 됨 (환불·회원 삭제·탈퇴) |
 | `author.language` | 회원의 **현재** 앱 언어. 상위 `language` 는 문의를 쓸 때 언어 |
-| `author.diaryCount` | 삭제되지 않았고 무료이거나 결제된 다이어리 수 (회원 앱 목록에 보이는 수) |
+| `author.diaryCount` | 삭제되지 않았고 무료이거나 결제됐거나 앱에서 풀린 다이어리 수 (회원 앱 목록에 보이는 수) |
 | `author.paidPaymentCount` | 지금 PAID 인 결제 수 (환불된 결제 제외) |
 | `author.refundedCount` / `rejectedRefundCount` | 승인 / 거절된 환불 요청 수 |
 | `author.pendingInquiryCount` | 답변 전(received) 문의 수. 처리 대기 환불 요청 포함 |

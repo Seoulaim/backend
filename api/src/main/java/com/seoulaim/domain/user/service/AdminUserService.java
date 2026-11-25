@@ -103,6 +103,7 @@ public class AdminUserService {
                         diary.name(),
                         diary.free(),
                         diary.paid(),
+                        diary.appUnlocked(),
                         diary.finalized(),
                         diary.createdAt(),
                         diary.lastSavedAt(),

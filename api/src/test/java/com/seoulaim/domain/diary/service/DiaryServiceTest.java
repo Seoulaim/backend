@@ -15,7 +15,9 @@ import com.seoulaim.domain.diary.dto.DiaryDownloadRequest;
 import com.seoulaim.domain.diary.dto.DiaryEditorResponse;
 import com.seoulaim.domain.diary.dto.DiaryFinishedPagesRequest;
 import com.seoulaim.domain.diary.dto.DiaryFinishedPagesResponse;
+import com.seoulaim.domain.diary.dto.DiaryNewTermsResponse;
 import com.seoulaim.domain.diary.dto.DiarySpreadsRequest;
+import com.seoulaim.domain.diary.dto.DiarySummaryResponse;
 import com.seoulaim.domain.diary.dto.DiaryUsedTemplateResponse;
 import com.seoulaim.domain.diary.entity.Diary;
 import com.seoulaim.domain.diary.entity.DiaryDownload;
@@ -28,6 +30,7 @@ import com.seoulaim.domain.file.dto.FileDetail;
 import com.seoulaim.domain.file.entity.FileDomain;
 import com.seoulaim.domain.file.entity.FileStatus;
 import com.seoulaim.domain.file.service.FileService;
+import com.seoulaim.global.common.ClientPlatform;
 import com.seoulaim.global.config.DiaryProperties;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
@@ -43,6 +46,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -114,7 +119,7 @@ class DiaryServiceTest {
   void create_무료이력없음_무료생성() {
     given(diaryRepository.existsByUserIdAndIsFreeTrue(USER_ID)).willReturn(false);
 
-    DiaryCreateResponse response = diaryService.create(USER_ID);
+    DiaryCreateResponse response = diaryService.create(USER_ID, ClientPlatform.WEB);
 
     ArgumentCaptor<Diary> captor = ArgumentCaptor.forClass(Diary.class);
     verify(diaryRepository).saveAndFlush(captor.capture());
@@ -129,7 +134,7 @@ class DiaryServiceTest {
   void create_무료이력있음_유료생성() {
     given(diaryRepository.existsByUserIdAndIsFreeTrue(USER_ID)).willReturn(true);
 
-    diaryService.create(USER_ID);
+    diaryService.create(USER_ID, ClientPlatform.WEB);
 
     ArgumentCaptor<Diary> captor = ArgumentCaptor.forClass(Diary.class);
     verify(diaryRepository).saveAndFlush(captor.capture());
@@ -142,7 +147,7 @@ class DiaryServiceTest {
   void saveSpreads_무료2쪽_저장() {
     Diary diary = givenMyDiary(Diary.create(USER_ID, true));
 
-    diaryService.saveSpreads(USER_ID, diary.getId(), spreads(FREE_SPREADS));
+    diaryService.saveSpreads(USER_ID, diary.getId(), spreads(FREE_SPREADS), ClientPlatform.WEB);
 
     assertThat(diary.getSpreads()).hasSize(FREE_SPREADS);
     assertThat(diary.getLastEditedAt()).isEqualTo(NOW);
@@ -155,7 +160,8 @@ class DiaryServiceTest {
   void saveSpreads_무료3쪽_402() {
     Diary diary = givenMyDiary(Diary.create(USER_ID, true));
 
-    assertThatThrownBy(() -> diaryService.saveSpreads(USER_ID, diary.getId(), spreads(3)))
+    assertThatThrownBy(
+            () -> diaryService.saveSpreads(USER_ID, diary.getId(), spreads(3), ClientPlatform.WEB))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.DIARY_PAYMENT_REQUIRED);
@@ -169,7 +175,7 @@ class DiaryServiceTest {
     diary.markPaid();
     givenMyDiary(diary);
 
-    diaryService.saveSpreads(USER_ID, diary.getId(), spreads(3));
+    diaryService.saveSpreads(USER_ID, diary.getId(), spreads(3), ClientPlatform.WEB);
 
     assertThat(diary.getSpreads()).hasSize(3);
   }
@@ -179,7 +185,8 @@ class DiaryServiceTest {
   void saveSpreads_유료미결제_402() {
     Diary diary = givenMyDiary(Diary.create(USER_ID, false));
 
-    assertThatThrownBy(() -> diaryService.saveSpreads(USER_ID, diary.getId(), spreads(1)))
+    assertThatThrownBy(
+            () -> diaryService.saveSpreads(USER_ID, diary.getId(), spreads(1), ClientPlatform.WEB))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.DIARY_PAYMENT_REQUIRED);
@@ -192,7 +199,8 @@ class DiaryServiceTest {
     diary.finalizeWith(List.of(), Map.of(), 0, NOW);
     givenMyDiary(diary);
 
-    assertThatThrownBy(() -> diaryService.saveSpreads(USER_ID, diary.getId(), spreads(1)))
+    assertThatThrownBy(
+            () -> diaryService.saveSpreads(USER_ID, diary.getId(), spreads(1), ClientPlatform.WEB))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.DIARY_FINALIZED);
@@ -203,7 +211,10 @@ class DiaryServiceTest {
   void saveSpreads_배열아님_400() {
     Diary diary = givenMyDiary(Diary.create(USER_ID, true));
 
-    assertThatThrownBy(() -> diaryService.saveSpreads(USER_ID, diary.getId(), request("{}", "{}")))
+    assertThatThrownBy(
+            () ->
+                diaryService.saveSpreads(
+                    USER_ID, diary.getId(), request("{}", "{}"), ClientPlatform.WEB))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.COMMON_INVALID_REQUEST);
@@ -218,7 +229,9 @@ class DiaryServiceTest {
     String big = "\"" + "a".repeat(DiaryService.MAX_EDIT_DATA_BYTES) + "\"";
 
     assertThatThrownBy(
-            () -> diaryService.saveSpreads(USER_ID, diary.getId(), request("[" + big + "]", "{}")))
+            () ->
+                diaryService.saveSpreads(
+                    USER_ID, diary.getId(), request("[" + big + "]", "{}"), ClientPlatform.WEB))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.DIARY_CONTENT_TOO_LARGE);
@@ -235,7 +248,8 @@ class DiaryServiceTest {
     diaryService.saveSpreads(
         USER_ID,
         diary.getId(),
-        request("[]", "{\"other\":[{\"id\":\"%s\",\"key\":\"%s\"}]}".formatted(fileId, key)));
+        request("[]", "{\"other\":[{\"id\":\"%s\",\"key\":\"%s\"}]}".formatted(fileId, key)),
+        ClientPlatform.WEB);
 
     verify(fileService).markLinked(List.of(fileId));
     assertThat(diary.getPlacePhotos()).containsOnlyKeys("other");
@@ -257,8 +271,8 @@ class DiaryServiceTest {
         """
             .formatted(first, second, first);
 
-    diaryService.saveSpreads(USER_ID, diary.getId(), request("[]", photos));
-    diaryService.saveSpreads(USER_ID, diary.getId(), request("[]", photos));
+    diaryService.saveSpreads(USER_ID, diary.getId(), request("[]", photos), ClientPlatform.WEB);
+    diaryService.saveSpreads(USER_ID, diary.getId(), request("[]", photos), ClientPlatform.WEB);
 
     assertThat(diary.getSaveCount()).isEqualTo(2);
     assertThat(diary.getPhotoCount()).isEqualTo(3);
@@ -310,7 +324,8 @@ class DiaryServiceTest {
                 diaryService.saveSpreads(
                     USER_ID,
                     diary.getId(),
-                    request("[]", "{\"p1\":[{\"id\":\"%s\",\"key\":\"k\"}]}".formatted(fileId))))
+                    request("[]", "{\"p1\":[{\"id\":\"%s\",\"key\":\"k\"}]}".formatted(fileId)),
+                    ClientPlatform.WEB))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.COMMON_INVALID_REQUEST);
@@ -322,7 +337,7 @@ class DiaryServiceTest {
   void finalizeDiary_정상_완성() {
     Diary diary = givenMyDiary(Diary.create(USER_ID, true));
 
-    diaryService.finalizeDiary(USER_ID, diary.getId(), spreads(2));
+    diaryService.finalizeDiary(USER_ID, diary.getId(), spreads(2), ClientPlatform.WEB);
 
     assertThat(diary.isFinalized()).isTrue();
     assertThat(diary.getCompletedAt()).isEqualTo(NOW);
@@ -503,5 +518,199 @@ class DiaryServiceTest {
             });
     JsonNode json = objectMapper.valueToTree(response.usedTemplates().get(0));
     assertThat(json.get("isActive").asBoolean(true)).isFalse();
+  }
+
+  // ---- 앱 다이어리 무료 #78 ----
+
+  @Test
+  @DisplayName("새 다이어리 조건: 웹은 무료 이력에 따라 free 와 설정 가격을 반환한다")
+  void getNewTerms_웹_기존규칙() {
+    given(diaryRepository.existsByUserIdAndIsFreeTrue(USER_ID)).willReturn(false, true);
+
+    assertThat(diaryService.getNewTerms(USER_ID, ClientPlatform.WEB))
+        .isEqualTo(new DiaryNewTermsResponse(true, PRICE));
+    assertThat(diaryService.getNewTerms(USER_ID, ClientPlatform.WEB))
+        .isEqualTo(new DiaryNewTermsResponse(false, PRICE));
+  }
+
+  @ParameterizedTest
+  @EnumSource(names = {"ANDROID", "IOS"})
+  @DisplayName("새 다이어리 조건: 앱은 무료 이력과 관계없이 free=true, price=0")
+  void getNewTerms_앱_항상무료(ClientPlatform platform) {
+    assertThat(diaryService.getNewTerms(USER_ID, platform))
+        .isEqualTo(new DiaryNewTermsResponse(true, 0));
+  }
+
+  @Test
+  @DisplayName("앱에서 만든 첫 다이어리는 웹과 같이 is_free 이고 appUnlocked 는 아니다")
+  void create_앱_첫다이어리_무료() {
+    given(diaryRepository.existsByUserIdAndIsFreeTrue(USER_ID)).willReturn(false);
+
+    diaryService.create(USER_ID, ClientPlatform.IOS);
+
+    Diary created = captureCreated();
+    assertThat(created.isFree()).isTrue();
+    assertThat(created.isAppUnlocked()).isFalse();
+  }
+
+  @ParameterizedTest
+  @EnumSource(names = {"ANDROID", "IOS"})
+  @DisplayName("앱에서 만든 두 번째 다이어리는 결제 없이 appUnlocked=true 로 만든다 (is_free·paid 는 false)")
+  void create_앱_두번째_appUnlocked(ClientPlatform platform) {
+    given(diaryRepository.existsByUserIdAndIsFreeTrue(USER_ID)).willReturn(true);
+
+    diaryService.create(USER_ID, platform);
+
+    Diary created = captureCreated();
+    assertThat(created.isFree()).isFalse();
+    assertThat(created.isPaid()).isFalse();
+    assertThat(created.isAppUnlocked()).isTrue();
+  }
+
+  @Test
+  @DisplayName("웹에서 만든 두 번째 다이어리는 appUnlocked 가 아니다")
+  void create_웹_두번째_appUnlocked아님() {
+    given(diaryRepository.existsByUserIdAndIsFreeTrue(USER_ID)).willReturn(true);
+
+    diaryService.create(USER_ID, ClientPlatform.WEB);
+
+    assertThat(captureCreated().isAppUnlocked()).isFalse();
+  }
+
+  private Diary captureCreated() {
+    ArgumentCaptor<Diary> captor = ArgumentCaptor.forClass(Diary.class);
+    verify(diaryRepository).saveAndFlush(captor.capture());
+    return captor.getValue();
+  }
+
+  @Test
+  @DisplayName("웹 요청은 3 spread 저장·완성 모두 402 이고 appUnlocked 도 바뀌지 않는다")
+  void saveSpreads_웹3쪽_402유지() {
+    Diary diary = givenMyDiary(Diary.create(USER_ID, true));
+
+    assertThatThrownBy(
+            () -> diaryService.saveSpreads(USER_ID, diary.getId(), spreads(3), ClientPlatform.WEB))
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.DIARY_PAYMENT_REQUIRED);
+    assertThatThrownBy(
+            () ->
+                diaryService.finalizeDiary(USER_ID, diary.getId(), spreads(3), ClientPlatform.WEB))
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.DIARY_PAYMENT_REQUIRED);
+    assertThat(diary.isAppUnlocked()).isFalse();
+    assertThat(diary.isFinalized()).isFalse();
+    assertThat(diary.getSaveCount()).isZero();
+  }
+
+  @ParameterizedTest
+  @EnumSource(names = {"ANDROID", "IOS"})
+  @DisplayName("앱 요청은 무료 다이어리 3 spread 도 저장되고 appUnlocked=true 가 된다")
+  void saveSpreads_앱3쪽_appUnlocked(ClientPlatform platform) {
+    Diary diary = givenMyDiary(Diary.create(USER_ID, true));
+
+    diaryService.saveSpreads(USER_ID, diary.getId(), spreads(3), platform);
+
+    assertThat(diary.getSpreads()).hasSize(3);
+    assertThat(diary.isAppUnlocked()).isTrue();
+    assertThat(diary.isPaid()).isFalse();
+  }
+
+  @Test
+  @DisplayName("앱 요청이라도 무료 범위 안이면 appUnlocked 로 바꾸지 않는다")
+  void saveSpreads_앱2쪽_appUnlocked아님() {
+    Diary diary = givenMyDiary(Diary.create(USER_ID, true));
+
+    diaryService.saveSpreads(USER_ID, diary.getId(), spreads(FREE_SPREADS), ClientPlatform.ANDROID);
+
+    assertThat(diary.isAppUnlocked()).isFalse();
+  }
+
+  @Test
+  @DisplayName("결제된 다이어리는 앱에서 무료 범위를 넘겨 저장해도 appUnlocked 로 바꾸지 않는다")
+  void saveSpreads_앱결제됨_appUnlocked아님() {
+    Diary diary = Diary.create(USER_ID, false);
+    diary.markPaid();
+    givenMyDiary(diary);
+
+    diaryService.saveSpreads(USER_ID, diary.getId(), spreads(5), ClientPlatform.IOS);
+
+    assertThat(diary.isAppUnlocked()).isFalse();
+  }
+
+  @Test
+  @DisplayName("웹에서 만든 미결제 유료 다이어리도 앱에서 저장하면 통과하고 appUnlocked=true")
+  void saveSpreads_앱유료미결제_appUnlocked() {
+    Diary diary = givenMyDiary(Diary.create(USER_ID, false));
+
+    diaryService.saveSpreads(USER_ID, diary.getId(), spreads(1), ClientPlatform.ANDROID);
+
+    assertThat(diary.isAppUnlocked()).isTrue();
+  }
+
+  @Test
+  @DisplayName("앱에서 3 spread 로 완성하면 FINALIZED 이고 appUnlocked=true")
+  void finalizeDiary_앱3쪽_완성() {
+    Diary diary = givenMyDiary(Diary.create(USER_ID, true));
+
+    diaryService.finalizeDiary(USER_ID, diary.getId(), spreads(3), ClientPlatform.IOS);
+
+    assertThat(diary.isFinalized()).isTrue();
+    assertThat(diary.isAppUnlocked()).isTrue();
+  }
+
+  @Test
+  @DisplayName("appUnlocked 다이어리는 웹 요청도 무료 범위를 넘겨 저장·완성·다운로드 기록된다")
+  void saveSpreads_appUnlocked_웹통과() {
+    Diary diary = Diary.create(USER_ID, false);
+    diary.unlockByApp();
+    givenMyDiary(diary);
+
+    diaryService.saveSpreads(USER_ID, diary.getId(), spreads(3), ClientPlatform.WEB);
+    assertThat(diary.getSpreads()).hasSize(3);
+
+    diaryService.finalizeDiary(USER_ID, diary.getId(), spreads(4), ClientPlatform.WEB);
+    assertThat(diary.isFinalized()).isTrue();
+
+    diaryService.recordDownload(
+        USER_ID, diary.getId(), new DiaryDownloadRequest(DiaryDownloadFormat.PDF, 4));
+    verify(diaryDownloadRepository).save(any());
+  }
+
+  @Test
+  @DisplayName("앱 요청도 완성된 다이어리는 409, 형태 오류는 400 이고 appUnlocked 로 바뀌지 않는다")
+  void saveSpreads_앱_나머지검증유지() {
+    Diary finalized = Diary.create(USER_ID, true);
+    finalized.finalizeWith(List.of(), Map.of(), 0, NOW);
+    givenMyDiary(finalized);
+    Diary draft = givenMyDiary(Diary.create(USER_ID, false));
+
+    assertThatThrownBy(
+            () ->
+                diaryService.saveSpreads(
+                    USER_ID, finalized.getId(), spreads(3), ClientPlatform.IOS))
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.DIARY_FINALIZED);
+    assertThatThrownBy(
+            () ->
+                diaryService.saveSpreads(
+                    USER_ID, draft.getId(), request(spreadsJson(3), "[]"), ClientPlatform.IOS))
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.COMMON_INVALID_REQUEST);
+    assertThat(finalized.isAppUnlocked()).isFalse();
+    assertThat(draft.isAppUnlocked()).isFalse();
+  }
+
+  @Test
+  @DisplayName("목록·편집 화면 응답에 appUnlocked 가 포함된다")
+  void responses_appUnlocked포함() {
+    Diary diary = Diary.create(USER_ID, false);
+    diary.unlockByApp();
+    givenMyDiary(diary);
+    given(diaryRepository.findVisibleByUserId(USER_ID)).willReturn(List.of(diary));
+
+    assertThat(diaryService.getMyDiaries(USER_ID))
+        .extracting(DiarySummaryResponse::appUnlocked)
+        .containsExactly(true);
+    assertThat(diaryService.getEditor(USER_ID, diary.getId()).diary().appUnlocked()).isTrue();
   }
 }

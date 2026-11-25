@@ -78,6 +78,7 @@ class AdminRefundRequestControllerTest {
                 UUID.randomUUID(),
                 "My Diary",
                 false,
+                true,
                 4,
                 null,
                 Instant.parse("2026-11-04T02:00:00Z"),
@@ -118,6 +119,7 @@ class AdminRefundRequestControllerTest {
         .andExpect(jsonPath("$[0].payment.currency").value("USD"))
         .andExpect(jsonPath("$[0].payment.amount").value(2.99))
         .andExpect(jsonPath("$[0].payment.diary.first").value(false))
+        .andExpect(jsonPath("$[0].payment.diary.appUnlocked").value(true))
         .andExpect(jsonPath("$[0].payment.diary.pages").value(4))
         .andExpect(jsonPath("$[0].refundWithinPolicy").value(true))
         .andExpect(jsonPath("$[0].deadline").value("2026-11-10"))

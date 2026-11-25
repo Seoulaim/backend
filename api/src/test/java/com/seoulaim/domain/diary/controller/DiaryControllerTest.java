@@ -7,16 +7,20 @@ import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.seoulaim.domain.diary.dto.DiaryCreateResponse;
 import com.seoulaim.domain.diary.dto.DiaryDownloadRequest;
+import com.seoulaim.domain.diary.dto.DiaryNewTermsResponse;
 import com.seoulaim.domain.diary.entity.DiaryDownloadFormat;
 import com.seoulaim.domain.diary.service.DiaryService;
+import com.seoulaim.global.common.ClientPlatform;
 import com.seoulaim.global.exception.BusinessException;
 import com.seoulaim.global.exception.ErrorCode;
 import com.seoulaim.global.security.SecurityTestConfig;
@@ -24,6 +28,9 @@ import com.seoulaim.global.security.TestAccessTokens;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -50,7 +57,8 @@ class DiaryControllerTest {
   void createDiary_정상_201반환() throws Exception {
     UUID userId = UUID.randomUUID();
     UUID diaryId = UUID.randomUUID();
-    given(diaryService.create(userId)).willReturn(new DiaryCreateResponse(diaryId));
+    given(diaryService.create(userId, ClientPlatform.WEB))
+        .willReturn(new DiaryCreateResponse(diaryId));
 
     mockMvc
         .perform(post("/api/v1/diaries").header(HttpHeaders.AUTHORIZATION, tokens.bearer(userId)))
@@ -76,7 +84,7 @@ class DiaryControllerTest {
     UUID diaryId = UUID.randomUUID();
     willThrow(new BusinessException(ErrorCode.DIARY_PAYMENT_REQUIRED))
         .given(diaryService)
-        .saveSpreads(eq(userId), eq(diaryId), any());
+        .saveSpreads(eq(userId), eq(diaryId), any(), eq(ClientPlatform.WEB));
 
     mockMvc
         .perform(
@@ -100,7 +108,7 @@ class DiaryControllerTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.fields.placePhotos").exists());
 
-    verify(diaryService, never()).saveSpreads(any(), any(), any());
+    verify(diaryService, never()).saveSpreads(any(), any(), any(), any());
   }
 
   @Test
@@ -110,7 +118,7 @@ class DiaryControllerTest {
     UUID diaryId = UUID.randomUUID();
     willThrow(new BusinessException(ErrorCode.DIARY_FINALIZED))
         .given(diaryService)
-        .finalizeDiary(eq(userId), eq(diaryId), any());
+        .finalizeDiary(eq(userId), eq(diaryId), any(), eq(ClientPlatform.WEB));
 
     mockMvc
         .perform(
@@ -212,5 +220,92 @@ class DiaryControllerTest {
                 .content("{\"format\": \"PNG\", \"pageCount\": 4}"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("COMMON_INVALID_REQUEST"));
+  }
+
+  // ---- 앱 다이어리 무료 #78 ----
+
+  @ParameterizedTest
+  @CsvSource({"android,ANDROID", "ios,IOS", "iOS,IOS"})
+  @DisplayName("X-Client-Platform 이 android·ios 면 생성·저장·완성에 앱 플랫폼을 넘긴다")
+  void platform_앱헤더_앱으로전달(String headerValue, ClientPlatform expected) throws Exception {
+    UUID userId = UUID.randomUUID();
+    UUID diaryId = UUID.randomUUID();
+    given(diaryService.create(userId, expected)).willReturn(new DiaryCreateResponse(diaryId));
+
+    mockMvc
+        .perform(
+            post("/api/v1/diaries")
+                .header(HttpHeaders.AUTHORIZATION, tokens.bearer(userId))
+                .header(ClientPlatform.HEADER, headerValue))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.diaryId").value(diaryId.toString()));
+    mockMvc
+        .perform(
+            put("/api/v1/diaries/{diaryId}/spreads", diaryId)
+                .header(HttpHeaders.AUTHORIZATION, tokens.bearer(userId))
+                .header(ClientPlatform.HEADER, headerValue)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(SPREADS_BODY))
+        .andExpect(status().isNoContent());
+    mockMvc
+        .perform(
+            post("/api/v1/diaries/{diaryId}/finalize", diaryId)
+                .header(HttpHeaders.AUTHORIZATION, tokens.bearer(userId))
+                .header(ClientPlatform.HEADER, headerValue)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(SPREADS_BODY))
+        .andExpect(status().isNoContent());
+
+    verify(diaryService).saveSpreads(eq(userId), eq(diaryId), any(), eq(expected));
+    verify(diaryService).finalizeDiary(eq(userId), eq(diaryId), any(), eq(expected));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"web", "", "windows", "android,ios", "androidx"})
+  @DisplayName("X-Client-Platform 이 web 이거나 모르는 값이면 웹으로 취급한다")
+  void platform_모르는값_웹취급(String headerValue) throws Exception {
+    UUID userId = UUID.randomUUID();
+    given(diaryService.getNewTerms(userId, ClientPlatform.WEB))
+        .willReturn(new DiaryNewTermsResponse(false, 3000));
+
+    mockMvc
+        .perform(
+            get("/api/v1/diaries/new-terms")
+                .header(HttpHeaders.AUTHORIZATION, tokens.bearer(userId))
+                .header(ClientPlatform.HEADER, headerValue))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.free").value(false))
+        .andExpect(jsonPath("$.price").value(3000));
+  }
+
+  @Test
+  @DisplayName("앱의 new-terms 는 { free: true, price: 0 }")
+  void getNewTerms_앱_무료() throws Exception {
+    UUID userId = UUID.randomUUID();
+    given(diaryService.getNewTerms(userId, ClientPlatform.ANDROID))
+        .willReturn(new DiaryNewTermsResponse(true, 0));
+
+    mockMvc
+        .perform(
+            get("/api/v1/diaries/new-terms")
+                .header(HttpHeaders.AUTHORIZATION, tokens.bearer(userId))
+                .header(ClientPlatform.HEADER, "android"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.free").value(true))
+        .andExpect(jsonPath("$.price").value(0));
+  }
+
+  @Test
+  @DisplayName("CORS preflight 에서 X-Client-Platform 헤더를 허용한다")
+  void cors_플랫폼헤더_허용() throws Exception {
+    mockMvc
+        .perform(
+            options("/api/v1/diaries/new-terms")
+                .header(HttpHeaders.ORIGIN, "http://localhost:5173")
+                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, ClientPlatform.HEADER))
+        .andExpect(status().isOk())
+        .andExpect(
+            header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS, ClientPlatform.HEADER));
   }
 }

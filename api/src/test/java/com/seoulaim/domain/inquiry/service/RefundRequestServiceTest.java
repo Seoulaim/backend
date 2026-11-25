@@ -107,6 +107,7 @@ class RefundRequestServiceTest {
             UUID.randomUUID(),
             "My Diary",
             firstDiary,
+            false,
             3,
             null,
             !firstDiary,

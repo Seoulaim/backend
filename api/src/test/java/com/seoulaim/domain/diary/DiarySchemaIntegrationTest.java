@@ -13,11 +13,13 @@ import com.seoulaim.domain.diary.entity.DiaryStatus;
 import com.seoulaim.domain.diary.entity.DiarySticker;
 import com.seoulaim.domain.diary.entity.DiaryTemplate;
 import com.seoulaim.domain.diary.entity.TemplateFrame;
+import com.seoulaim.domain.diary.repository.DiaryCounts;
 import com.seoulaim.domain.diary.repository.DiaryDownloadRepository;
 import com.seoulaim.domain.diary.repository.DiaryPaymentRepository;
 import com.seoulaim.domain.diary.repository.DiaryRepository;
 import com.seoulaim.domain.diary.repository.DiaryStickerRepository;
 import com.seoulaim.domain.diary.repository.DiaryTemplateRepository;
+import com.seoulaim.domain.diary.repository.UserCount;
 import com.seoulaim.domain.order.gateway.PaymentCurrency;
 import com.seoulaim.domain.order.gateway.PaymentMerchant;
 import com.seoulaim.domain.user.entity.User;
@@ -119,6 +121,35 @@ class DiarySchemaIntegrationTest {
         .isPresent();
     assertThat(diaryRepository.findByIdAndUserIdAndDeletedAtIsNull(deletedPaid.getId(), userId))
         .isEmpty();
+  }
+
+  @Test
+  @DisplayName("앱에서 풀린 다이어리는 미결제 유료여도 목록·회원별 수·대시보드에 포함된다 (삭제되면 목록에서 제외)")
+  void findVisibleByUserId_whenAppUnlocked_includes() {
+    UUID userId = saveUser();
+    Instant from = Instant.parse("2020-01-01T00:00:00Z");
+    Instant to = Instant.parse("2100-01-01T00:00:00Z");
+    DiaryCounts before = diaryRepository.countForDashboard(from, to, DiaryStatus.FINALIZED);
+    Diary unlocked = Diary.create(userId, false);
+    unlocked.unlockByApp();
+    diaryRepository.saveAndFlush(unlocked);
+    diaryRepository.saveAndFlush(Diary.create(userId, false));
+    Diary deleted = Diary.create(userId, false);
+    deleted.unlockByApp();
+    deleted.delete(Instant.parse("2026-11-26T03:00:00Z"));
+    diaryRepository.saveAndFlush(deleted);
+
+    assertThat(diaryRepository.findVisibleByUserId(userId))
+        .extracting(Diary::getId)
+        .containsExactly(unlocked.getId());
+    assertThat(diaryRepository.findById(unlocked.getId()).orElseThrow().isAppUnlocked()).isTrue();
+    assertThat(diaryRepository.countVisibleByUserIds(List.of(userId)))
+        .extracting(UserCount::getCount)
+        .containsExactly(1L);
+    DiaryCounts after = diaryRepository.countForDashboard(from, to, DiaryStatus.FINALIZED);
+    assertThat(after.getTotal() - before.getTotal()).isEqualTo(1);
+    assertThat(after.getCreatedInRange() - before.getCreatedInRange()).isEqualTo(2);
+    assertThat(after.getPaid() - before.getPaid()).isZero();
   }
 
   @Test
